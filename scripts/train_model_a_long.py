@@ -37,6 +37,10 @@ ap.add_argument("--enc-epochs", type=int, default=200)
 ap.add_argument("--a-epochs", type=int, default=600)
 ap.add_argument("--eval-every", type=int, default=50)
 ap.add_argument("--lr", type=float, default=2e-3)
+ap.add_argument("--jac-penalty", type=float, default=0.0,
+                help="Hutchinson ||d drift/dz||_F^2 penalty; stops stiff fast-reverting solutions")
+ap.add_argument("--select", default="val_mae", choices=["val_mae", "val_nll"],
+                help="which validation metric picks the kept checkpoint")
 ap.add_argument("--data-root", default="data/synthetic")
 ap.add_argument("--out", default="runs/long")
 ap.add_argument("--no-hallmarks", action="store_true")
@@ -68,6 +72,9 @@ P = {s: make_pairs(lat[lat.split == s].reset_index(), zc, "consecutive") for s i
 for s in P:
     sub = lat[lat.split == s].reset_index()
     P[s]["i0"], P[s]["i1"] = sub["index"].to_numpy()[P[s]["i0"]], sub["index"].to_numpy()[P[s]["i1"]]
+subv = lat[lat.split == "val"].reset_index()
+Pv = make_pairs(subv, zc, "first_last")
+Pv["i0"], Pv["i1"] = subv["index"].to_numpy()[Pv["i0"]], subv["index"].to_numpy()[Pv["i1"]]
 sub = lat[lat.split == "test"].reset_index()
 Pt = make_pairs(sub, zc, "first_last")
 Pt["i0"], Pt["i1"] = sub["index"].to_numpy()[Pt["i0"]], sub["index"].to_numpy()[Pt["i1"]]
@@ -88,12 +95,14 @@ def checkpoint_metrics(m):
     m.eval()
     va = pairs_to_tensors(P["val"], dev)
     nll = float(np.mean([m.val_loss(va, K=128) for _ in range(2)]))
+    Sv = predict_latent(m, Pv, 32, dev)
+    fv = forecast_eval("A", Sv, Pv, bundle, ca.Xs, nc, sigma_x, np.random.default_rng(0))
     S = predict_latent(m, Pt, 32, dev)
     fc = forecast_eval("A", S, Pt, bundle, ca.Xs, nc, sigma_x, np.random.default_rng(0))
     gt = drift_recovery(m, tz[zc].to_numpy(), tz.visit_age.to_numpy(), tz[["u"]].to_numpy(), Zt[tem], tcfg, W=W, device=dev)
     Zx, Ax = tz[zc].to_numpy(), tz.visit_age.to_numpy()
     dv = (drift_at(m, Zx, Ax, np.ones(len(Zx)), dev) - drift_at(m, Zx, Ax, np.zeros(len(Zx)), dev)) @ W
-    return {"val_nll_K128": nll, "test_latent_mse": fc["latent_mse"], "test_mae": fc["mae"], "test_crps": fc["crps"],
+    return {"val_nll_K128": nll, "val_mae": fv["mae"], "test_latent_mse": fc["latent_mse"], "test_mae": fc["mae"], "test_crps": fc["crps"],
             "cov90": fc["cov90"], "drift_rel_mse": gt["drift_rel_mse"], "drift_nrmse_per_dim": gt["drift_nrmse_per_dim"],
             "diff_trace_ratio_old_young": gt.get("diff_trace_ratio_old_young_model"),
             "u_effect_true_nutr": float(dv.mean(0)[2])}
@@ -109,6 +118,7 @@ sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, args.a_epochs)
 n = tr[0].shape[0]
 hist, ckpts = [], []
 best, best_state, best_ep = np.inf, None, -1
+best_val5, last_good, n_skipped, n_rollbacks = np.inf, copy.deepcopy(m.state_dict()), 0, 0
 t0 = time.time()
 for ep in range(args.a_epochs):
     m.train()
@@ -116,7 +126,17 @@ for ep in range(args.a_epochs):
     tot = 0.0
     for s in range(0, n, 512):
         b = perm[s:s + 512]
-        loss, _ = m.loss(tuple(x[b] for x in tr), K=32)
+        batch = tuple(x[b] for x in tr)
+        loss, _ = m.loss(batch, K=32)
+        if args.jac_penalty > 0:
+            zz = batch[0].clone().requires_grad_(True)
+            f = m.drift(zz, batch[2], batch[4])
+            v = torch.randn_like(f)
+            vJ = torch.autograd.grad(f, zz, grad_outputs=v, create_graph=True)[0]
+            loss = loss + args.jac_penalty * (vJ ** 2).sum(-1).mean()
+        if not torch.isfinite(loss):
+            n_skipped += 1
+            continue
         opt.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(params, 5.0)
@@ -128,14 +148,27 @@ for ep in range(args.a_epochs):
         vl = m.val_loss(va, K=32)
         hist.append({"epoch": ep, "train": tot / n, "val": vl, "lr": sched.get_last_lr()[0],
                      "seconds": time.time() - t0})
+        # divergence guard: roll back to the last good weights and halve the learning rate
+        if not np.isfinite(vl) or vl > best_val5 + 3.0 or n_skipped > 0:
+            m.load_state_dict(last_good)
+            for gp in opt.param_groups:
+                gp["lr"] *= 0.5
+            sched.base_lrs = [lr * 0.5 for lr in sched.base_lrs]
+            n_rollbacks += 1
+            log(f"[guard] epoch {ep}: val {vl:.3f} (best {best_val5:.3f}), skipped {n_skipped} -> rollback #{n_rollbacks}, lr x0.5")
+            n_skipped = 0
+            continue
+        best_val5 = min(best_val5, vl)
+        last_good = copy.deepcopy(m.state_dict())
     if (ep + 1) % args.eval_every == 0 or ep == 0 or ep == args.a_epochs - 1:
         cm = checkpoint_metrics(m)
         cm["epoch"] = ep + 1
         ckpts.append(cm)
-        log(f"[A] ep {ep + 1} val128 {cm['val_nll_K128']:.4f} test_mae {cm['test_mae']:.4f} "
+        log(f"[A] ep {ep + 1} val128 {cm['val_nll_K128']:.4f} val_mae {cm['val_mae']:.4f} test_mae {cm['test_mae']:.4f} "
             f"lmse {cm['test_latent_mse']:.3f} drift_relmse {cm['drift_rel_mse']:.3f} u {cm['u_effect_true_nutr']:.4f}")
-        if cm["val_nll_K128"] < best:
-            best, best_state, best_ep = cm["val_nll_K128"], copy.deepcopy(m.state_dict()), ep + 1
+        score = cm["val_mae"] if args.select == "val_mae" else cm["val_nll_K128"]
+        if np.isfinite(score) and score < best:
+            best, best_state, best_ep = score, copy.deepcopy(m.state_dict()), ep + 1
             torch.save(best_state, out / "model_A_best_sofar.pt")
         (out / "convergence.json").write_text(json.dumps(jsonable({"a_history": hist, "checkpoints": ckpts,
                                                                     "encoder_history": bundle.history})))
@@ -147,18 +180,19 @@ for ep in range(args.a_epochs):
             cm = checkpoint_metrics(m)
             cm["epoch"] = ep + 1
             ckpts.append(cm)
-            if cm["val_nll_K128"] < best:
-                best, best_state, best_ep = cm["val_nll_K128"], copy.deepcopy(m.state_dict()), ep + 1
+            score = cm["val_mae"] if args.select == "val_mae" else cm["val_nll_K128"]
+            if np.isfinite(score) and score < best:
+                best, best_state, best_ep = score, copy.deepcopy(m.state_dict()), ep + 1
         break
 train_seconds = time.time() - t0
 torch.save(m.state_dict(), out / "model_A_final.pt")
 m.load_state_dict(best_state)
 m.eval()
 torch.save(m.state_dict(), out / "model_A.pt")
-log(f"best checkpoint epoch {best_ep} (val128 {best:.4f}); train {train_seconds:.0f}s")
+log(f"best checkpoint epoch {best_ep} ({args.select} {best:.4f}); rollbacks {n_rollbacks}; train {train_seconds:.0f}s")
 
 # ---------------- final evaluation (best checkpoint) ----------------
-res = {"args": vars(args), "best_epoch": best_ep, "train_seconds": train_seconds,
+res = {"args": vars(args), "best_epoch": best_ep, "n_rollbacks": n_rollbacks, "train_seconds": train_seconds,
        "n_pairs": {"train": len(P["train"]["a0"]), "val": len(P["val"]["a0"]), "test_first_last": len(Pt["a0"])},
        "latent_obs_noise_var": obs_var, "encoder_history": bundle.history, "a_history": hist,
        "checkpoints": ckpts}
