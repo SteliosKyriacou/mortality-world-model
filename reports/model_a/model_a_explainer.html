@@ -131,6 +131,8 @@ footer { max-width: var(--measure); margin: 4rem auto 0; font-family: var(--font
     <li><a href="#model">The model, exactly</a></li>
     <li><a href="#landscape">The aging landscape it learned</a></li>
     <li><a href="#intervention">What an intervention does</a></li>
+    <li><a href="#reality">Intervention predictions vs reality</a></li>
+    <li><a href="#convergence">Training convergence</a></li>
     <li><a href="#recovery">Does it recover the truth?</a></li>
     <li><a href="#forecast">Forecasting real futures</a></li>
     <li><a href="#hallmarks">Hallmark tests</a></li>
@@ -224,6 +226,16 @@ footer { max-width: var(--measure); margin: 4rem auto 0; font-family: var(--font
 <p>Each of the 33 clinical markers becomes one token: its standardised value times a learned vector, plus a learned marker identity. A missing marker gets a learned mask token and is excluded from attention, so nothing is imputed. The gene panel, when present, is projected into 4 extra tokens. Two transformer layers (width 64, 4 heads) pool the tokens into a 16-dimensional <i>z</i>.</p>
 <p>The encoder is trained as a masked autoencoder. 30% of the observed markers are hidden, and it must reconstruct them: weight 1 for hidden entries, 0.5 for visible ones. Alongside this it trains a piecewise-exponential death hazard on <i>z</i> (weight 0.5) and a consistency term that keeps <i>z</i> stable when the gene panel is missing (weight 0.5). Reconstructing hidden markers, rather than visible ones, matters. A latent that copies its own inputs also copies their measurement noise, and the dynamics model would then mistake that noise for fast biology. After 40 epochs the latent is whitened (zero mean, unit variance per dimension on training visits) and frozen.</p>
 
+<h3>Why 16 dimensions?</h3>
+<p>It was a judgment call made before training, not a tuned value; nothing in the results so far proves 16 is right. The reasoning:</p>
+<ul>
+  <li><b>The truth has 8 dimensions, and 8 is the floor.</b> Fewer than 8 and two independent processes, say inflammation and the metabolic drift, have to share an axis and their dynamics get mixed.</li>
+  <li><b>The encoder needs slack.</b> The markers depend on the hidden state nonlinearly (squared terms for CRP, glucose, NT-proBNP, triglycerides and frailty index), and the encoder also has to carry the gene panel and the hazard. Extra dimensions let it lay these out without bending the 8 true axes. Twice the true size is a common rule of thumb for this.</li>
+  <li><b>The extra dimensions are cheap for the SDE.</b> Model A has 46k parameters at 16 dimensions. The noise and drift networks scale with the latent size, but a 16-dimensional SDE trains in under two minutes.</li>
+  <li><b>Too many dimensions hurt.</b> Every extra dimension is somewhere for encoder noise to go, and the SDE then has to explain it as diffusion. That makes the landscape harder to interpret (more rotation, less identifiable). On real data, where the true size is unknown, too much room is a real risk.</li>
+</ul>
+<p>How well it worked: a linear map from the 16 learned dimensions recovers the 8 true ones with R² 0.82 (0.85 with the longer-trained encoder). The proper answer is a sweep over 4, 8, 12, 16, 24 and 32 dimensions, comparing forecast error, recovery of the truth and hallmark detection. That sweep is scripted (<code>scripts/train_model_a_long.py --d</code>) and was paused so the GPU could run the overnight training; it is the next thing to run.</p>
+
 <h3>3.2 The equation of motion</h3>
 <div class="eq">
 <math display="block"><mrow><mi>d</mi><mi mathvariant="bold-italic">z</mi><mo>=</mo><msub><mi mathvariant="bold-italic">f</mi><mi>θ</mi></msub><mo>(</mo><mi mathvariant="bold-italic">z</mi><mo>,</mo><mi>a</mi><mo>,</mo><mi>u</mi><mo>)</mo><mspace width="0.2em"/><mi>d</mi><mi>a</mi><mo>+</mo><msub><mi mathvariant="bold">Σ</mi><mi>φ</mi></msub><mo>(</mo><mi mathvariant="bold-italic">z</mi><mo>,</mo><mi>a</mi><mo>)</mo><mspace width="0.2em"/><mi>d</mi><mi mathvariant="bold-italic">W</mi><mo>,</mo><mspace width="1em"/><msub><mi mathvariant="bold-italic">f</mi><mi>θ</mi></msub><mo>=</mo><mo>−</mo><mo>∇</mo><msub><mi>V</mi><mi>ψ</mi></msub><mo>(</mo><mi mathvariant="bold-italic">z</mi><mo>)</mo><mo>+</mo><msub><mi mathvariant="bold-italic">J</mi><mi>θ</mi></msub><mo>(</mo><mi mathvariant="bold-italic">z</mi><mo>,</mo><mi>a</mi><mo>,</mo><mi>u</mi><mo>)</mo></mrow></math>
@@ -248,7 +260,22 @@ footer { max-width: var(--measure); margin: 4rem auto 0; font-family: var(--font
 <p><b>Why <i>r</i> is fixed, not learned.</b> We estimate <i>r</i><sup>2</sup> once. We perturb 4,000 training visits 16 times by each marker's measurement noise, as estimated by the decoder, and measure how much <i>z</i> moves (0.08–0.21 per dimension, i.e. 8–21% of the latent variance). The start state is jittered by the same amount during training (errors-in-variables). When we first let the model learn <i>r</i> itself, it explained the encoder's noise as fast, large biological noise. With visits at least a year apart, the data cannot distinguish the two.</p>
 <p><b>Optimisation.</b> AdamW (learning rate 2×10⁻³, weight decay 10⁻⁵), cosine schedule, batch 512, gradient clip 5, up to 80 epochs with early stopping on validation likelihood (patience 25). Training takes 99 ± 9 s and peaks at 5.6 GB on one RTX 4070 Ti. At prediction time a 10-year path costs 40 network evaluations (4 steps per year).</p>
 
-<h3>3.4 How predictions are read out</h3>
+<h3 id="convergence">3.4 Training convergence</h3>
+<p>The reported model was trained for 80 epochs (about 100 seconds). Its validation loss was still drifting down when training ended, so we started a long run on 4 October at 10:06: encoder 200 epochs, then Model A for up to 19.5 hours (about 52,000 epochs) with the learning rate annealed over the whole run. Every 500 epochs the run records the validation likelihood (128 futures per pair), held-out forecast error and drift error against the true equation. The plots below therefore show whether more training improves what we care about, not just whether the loss keeps falling. The checkpoint with the best validation likelihood is kept, so overfitting cannot make the final model worse than the best one seen.</p>
+<figure id="fig-conv">
+  <div class="fig-body">
+    <p id="conv-status" style="font-family:var(--font-ui);font-size:.86rem;color:var(--muted);margin:0 0 8px"></p>
+    <div class="panels">
+      <div class="panel"><span class="pl">a</span><div class="ptitle">Training loss and validation NLL</div><div id="cv-loss" class="plot loading">Loading…</div></div>
+      <div class="panel"><span class="pl">b</span><div class="ptitle">Held-out forecast error (decoded MAE)</div><div id="cv-mae" class="plot loading">Loading…</div></div>
+      <div class="panel"><span class="pl">c</span><div class="ptitle">Drift error vs the true equation</div><div id="cv-drift" class="plot loading">Loading…</div></div>
+      <div class="panel"><span class="pl">d</span><div class="ptitle">Recovered intervention effect (true −0.020/yr)</div><div id="cv-u" class="plot loading">Loading…</div></div>
+    </div>
+  </div>
+  <figcaption><b>Figure 9 | Convergence of the long run.</b> Epochs on a log scale. (a) Training loss and validation NLL from 32 futures every 5 epochs; the validation curve is noisy because it is a Monte Carlo estimate. (b) Mean absolute error forecasting held-out people's last visit from their first; the dashed line is the 80-epoch model (0.655) and the dotted line is gradient-boosted trees (0.665). (c) Relative MSE of the learned drift against the true drift through the encoder (lower is better; the 80-epoch model scored 0.69). (d) Learned intervention effect on the true nutrient axis.</figcaption>
+</figure>
+
+<h3>3.5 How predictions are read out</h3>
 <p>A forecast for a person is 32 (or more) sample paths of <i>z</i>. Pushing each path through the decoder gives marker trajectories with uncertainty bands. Pushing it through the hazard head gives an instantaneous death rate λ(<i>z</i>(<i>a</i>)). Integrating that rate along each path and averaging over paths gives a survival curve. The decoder and hazard head are the frozen ones from the encoder stage. Model A only moves the point.</p>
 </section>
 
@@ -317,6 +344,28 @@ footer { max-width: var(--measure); margin: 4rem auto 0; font-family: var(--font
 
 <section class="col">
 <p><b>Reading the result.</b> The model gets the metabolic effect right and specific. HbA1c and glucose bend down, starting at the moment of treatment and growing with time. By 90, treatment from baseline lowers HbA1c by a median 4.1 mmol/mol (80% of twins: 2.6–6.1). The non-metabolic markers barely move: their paired effect bands straddle zero, as planted. It also gets the order of benefit right: the earlier the start, the larger the gain. But it <b>underestimates the survival benefit by about half</b>: +0.45 years alive before 90 against +0.98 in the truth when started at baseline, and none at all for starts at 65 or 75 where the truth still gives +0.23 and +0.05. The cause is the hazard head, not the dynamics. It was fitted once on the encoder's latent and gives the metabolic direction too little weight. This is the same weakness that makes the model's survival predictions no better than a Cox model (§6). Training the hazard along simulated paths (§9) is the fix to try.</p>
+</section>
+
+<section class="col" id="reality">
+<h3>Intervention predictions vs reality</h3>
+<p>The scenarios above are for one person. Here we test the model's intervention predictions across the held-out cohort, against two kinds of reality.</p>
+<p><b>Trial-style check.</b> The treatment was randomised: 30% of people got it from their first visit. Held-out people therefore form a treated arm and an untreated arm, just as in a trial. We measure each person's actual HbA1c change per year between their first and last visit. The model predicts the same quantity for the same people from their first visit and their actual arm, and the true equation does too. We do the same for survival: the observed Kaplan–Meier curve in each arm, against the model's predicted survival for exactly those people. This is the check that can be run on real cohorts, wherever treatment was randomised or can be credibly treated as such.</p>
+<p><b>Per-person check.</b> Only possible in a synthetic world: for 400 held-out people, the predicted effect of treating from baseline against the true equation's effect for the same person.</p>
+</section>
+<figure id="fig3c">
+  <div class="fig-body">
+    <div class="panels">
+      <div class="panel"><span class="pl">a</span><div class="ptitle">Treated minus untreated: HbA1c change per year</div><div id="re-arm" class="plot loading">Loading…</div></div>
+      <div class="panel"><span class="pl">b</span><div class="ptitle">Survival by arm: observed vs predicted</div><div id="re-km" class="plot loading" style="height:400px">Loading…</div></div>
+      <div class="panel"><span class="pl">c</span><div class="ptitle">Per person: predicted HbA1c effect at +10 years</div><div id="re-hb" class="plot loading">Loading…</div></div>
+      <div class="panel"><span class="pl">d</span><div class="ptitle">Per person: predicted vs true years gained (15 y)</div><div id="re-ya" class="plot loading">Loading…</div></div>
+    </div>
+  </div>
+  <figcaption id="re-cap"><b>Figure 3c | How the intervention predictions map onto reality.</b> (a) Difference between arms in HbA1c change (mmol/mol per year) with 95% bootstrap intervals: observed in held-out data, predicted by Model A for the same people, and expected under the true equation. Bars show each arm's mean rate. (b) Probability alive from the first visit: observed Kaplan–Meier (steps), Model A (solid), true equation (dashed), untreated in grey and treated in teal. (c) Distribution of Model A's per-person effect; in this world the true effect is the same for everyone (ochre line). (d) Per-person survival benefit over 15 years, model against truth; the diagonal is perfect agreement.</figcaption>
+</figure>
+
+<section class="col">
+<p id="re-text"><b>Reading it.</b> At the level of the two arms the model is right. The observed slowdown in HbA1c rise is −0.113 mmol/mol per year (95% CI −0.223 to −0.004). The model predicts −0.110 for the same people and the true equation gives −0.128. Each arm's own rate is also close: untreated 0.30 observed vs 0.28 predicted, treated 0.19 vs 0.17. Per person, the model has the direction right for everyone. Its average effect is 82% of the true one (−1.17 vs −1.42 mmol/mol at +10 years), and it spreads that effect across people (−0.77 to −1.54) where the truth is uniform. For survival, two problems show. Its absolute risk is too pessimistic: it predicts 67% alive at 15 years against 79% observed and 79% under the truth. Its per-person survival benefit does not track the true one (correlation −0.30). The ranking of who dies first is fine (C-index 0.78); the calibration is not. A likely cause: the model's noise grows too fast with age (§7.2), so simulated paths fan out too far, and averaging an exponential hazard over a wider fan raises it. These numbers are from the 80-epoch model; the overnight model will replace them.</p>
 </section>
 
 <section class="col">
@@ -697,6 +746,71 @@ conda run -n mwm python scripts/make_model_a_figure_data.py</pre>
     document.getElementById("sc-table").innerHTML = h + "</tbody>";
   }
 
+  // ---------------- Figure 3c: intervention vs reality ----------------
+  function drawReality() {
+    var R = D.reality, H = R.trial.hba1c_rate, S = R.trial.survival, P = R.per_person;
+    var labs = ["observed", "Model A", "true equation"], vals = [H.observed_diff, H.model_diff, H.truth_diff];
+    var cis = [H.observed_ci95, H.model_ci95, H.truth_ci95], cols = [C.ink, C.model, C.truth];
+    plot("re-arm", [
+      { type: "bar", x: labs, y: [H.observed_rate_by_arm["0"], H.model_rate_by_arm["0"], H.truth_rate_by_arm["0"]], name: "untreated arm rate", marker: { color: hexA(C.null, 0.45) }, yaxis: "y2", hovertemplate: "%{x}: %{y:.3f}/yr<extra>untreated</extra>" },
+      { type: "bar", x: labs, y: [H.observed_rate_by_arm["1"], H.model_rate_by_arm["1"], H.truth_rate_by_arm["1"]], name: "treated arm rate", marker: { color: hexA(C.model, 0.35) }, yaxis: "y2", hovertemplate: "%{x}: %{y:.3f}/yr<extra>treated</extra>" },
+      { type: "scatter", mode: "markers", x: labs, y: vals, name: "difference (treated − untreated)",
+        marker: { size: 13, color: cols, line: { color: C.panel, width: 1.5 } },
+        error_y: { type: "data", symmetric: false, array: cis.map(function (c, i) { return c[1] - vals[i]; }), arrayminus: cis.map(function (c, i) { return vals[i] - c[0]; }), color: C.ink, thickness: 1.5, width: 6 },
+        hovertemplate: "%{x}: %{y:.3f} mmol/mol/yr<extra></extra>" }
+    ], base({ barmode: "group", yaxis: ax({ title: { text: "difference (mmol/mol per yr)" }, range: [-0.3, 0.05], zeroline: true, zerolinecolor: C.muted }),
+      yaxis2: ax({ title: { text: "arm rate (mmol/mol per yr)" }, overlaying: "y", side: "right", range: [0, 0.6], showgrid: false }),
+      legend: { orientation: "h", x: 0, y: -0.2, font: { size: 10 } }, margin: { l: 60, r: 56, t: 10, b: 80 } }));
+    var g = S.grid, tr = [];
+    ["0", "1"].forEach(function (u) {
+      var c = u === "1" ? C.model : C.null, nm = u === "1" ? "treated" : "untreated";
+      tr.push({ type: "scatter", mode: "lines", x: g, y: S.observed_km[u], line: { color: c, width: 2, shape: "hv" }, name: nm + ", observed (n=" + S.n[u] + ", " + S.deaths[u] + " deaths)" });
+      tr.push({ type: "scatter", mode: "lines", x: g, y: S.model[u], line: { color: c, width: 3 }, name: nm + ", Model A" });
+      tr.push({ type: "scatter", mode: "lines", x: g, y: S.truth[u], line: { color: c, width: 2, dash: "dash" }, name: nm + ", true equation" });
+    });
+    plot("re-km", tr, base({ xaxis: ax({ title: { text: "years since first visit" } }), yaxis: ax({ title: { text: "probability alive" }, tickformat: ".0%", range: [0.6, 1.01] }), legend: { orientation: "h", x: 0, y: -0.36, font: { size: 9 } }, margin: { l: 56, r: 10, t: 10, b: 130 } }));
+    var tru = P.true_d_hba1c_10y.reduce(function (s, v) { return s + v; }, 0) / P.true_d_hba1c_10y.length;
+    plot("re-hb", [{ type: "histogram", x: P.pred_d_hba1c_10y, nbinsx: 40, marker: { color: C.model }, opacity: 0.75, name: "Model A, per person" }],
+      base({ xaxis: ax({ title: { text: "treated − untreated HbA1c at +10 y (mmol/mol)" } }), yaxis: ax({ title: { text: "people" } }), showlegend: false,
+        shapes: [{ type: "line", x0: tru, x1: tru, y0: 0, y1: 1, yref: "paper", line: { color: C.truth, width: 3 } }, { type: "line", x0: 0, x1: 0, y0: 0, y1: 1, yref: "paper", line: { color: C.muted, width: 1, dash: "dot" } }],
+        annotations: [{ x: tru, y: 1, yref: "paper", text: "true effect " + tru.toFixed(2), showarrow: false, xanchor: "right", yanchor: "top", font: { size: 11, color: C.truth } }] }));
+    var all = P.pred_d_years_alive_15y.concat(P.true_d_years_alive_15y), lo = Math.min.apply(null, all), hi = Math.max.apply(null, all);
+    plot("re-ya", [
+      { type: "scatter", mode: "markers", x: P.true_d_years_alive_15y, y: P.pred_d_years_alive_15y, marker: { color: C.model, size: 5, opacity: 0.55 }, customdata: P.age0, hovertemplate: "age %{customdata:.0f}<br>true %{x:.3f} y<br>model %{y:.3f} y<extra></extra>", name: "person" },
+      { type: "scatter", mode: "lines", x: [lo, hi], y: [lo, hi], line: { color: C.truth, width: 2, dash: "dash" }, name: "perfect agreement", hoverinfo: "skip" }
+    ], base({ xaxis: ax({ title: { text: "true years gained (true equation)" } }), yaxis: ax({ title: { text: "predicted years gained (Model A)" } }), legend: { orientation: "h", x: 0, y: -0.25, font: { size: 10 } }, margin: { l: 56, r: 10, t: 10, b: 80 },
+      annotations: [{ x: 0.02, y: 0.98, xref: "paper", yref: "paper", xanchor: "left", yanchor: "top", showarrow: false, font: { size: 11, color: C.muted, family: "IBM Plex Mono, monospace" },
+        text: "r = " + P.summary.years_alive.corr.toFixed(2) + " · mean " + P.summary.years_alive.pred_mean.toFixed(3) + " vs " + P.summary.years_alive.true_mean.toFixed(3) + " y" }] }));
+  }
+
+  // ---------------- Figure 9: convergence ----------------
+  function drawConvergence() {
+    var st = document.getElementById("conv-status");
+    var CV = D.convergence;
+    if (!CV) {
+      st.textContent = "The long run is still training (started 4 October 10:06, ends by about 06:00 on 5 October). These plots fill in when its results are loaded into the page.";
+      ["cv-loss", "cv-mae", "cv-drift", "cv-u"].forEach(function (id) { var el = document.getElementById(id); el.textContent = "Waiting for the overnight run."; });
+      return;
+    }
+    var h = CV.a_history, k = CV.checkpoints;
+    var last = k[k.length - 1], best = k.reduce(function (b, c) { return c.val_nll_K128 < b.val_nll_K128 ? c : b; }, k[0]);
+    st.textContent = "Trained to epoch " + last.epoch.toLocaleString() + ". Best validation likelihood at epoch " + best.epoch.toLocaleString() + ".";
+    var ep = function (a) { return a.map(function (x) { return Math.max(1, x.epoch); }); };
+    var logx = ax({ title: { text: "epoch" }, type: "log" });
+    plot("cv-loss", [
+      { type: "scatter", mode: "lines", x: ep(h), y: h.map(function (x) { return x.train; }), name: "training loss", line: { color: C.null, width: 1.5 } },
+      { type: "scatter", mode: "lines", x: ep(h), y: h.map(function (x) { return x.val; }), name: "validation NLL (K=32)", line: { color: C.model, width: 1 }, opacity: 0.6 },
+      { type: "scatter", mode: "lines+markers", x: k.map(function (x) { return x.epoch; }), y: k.map(function (x) { return x.val_nll_K128; }), name: "validation NLL (K=128)", line: { color: C.ink, width: 2 }, marker: { size: 4 } }
+    ], base({ xaxis: logx, yaxis: ax({ title: { text: "NLL per pair" } }), legend: { orientation: "h", x: 0, y: -0.25, font: { size: 10 } }, margin: { l: 56, r: 10, t: 10, b: 80 } }));
+    var ref = function (y, color, dash) { return { type: "line", x0: 0, x1: 1, xref: "paper", y0: y, y1: y, line: { color: color, width: 1.5, dash: dash } }; };
+    plot("cv-mae", [{ type: "scatter", mode: "lines+markers", x: k.map(function (x) { return x.epoch; }), y: k.map(function (x) { return x.test_mae; }), line: { color: C.model, width: 2.5 }, marker: { size: 5 }, name: "long run" }],
+      base({ xaxis: logx, yaxis: ax({ title: { text: "MAE (SD units)" } }), showlegend: false, shapes: [ref(0.6547, C.null, "dash"), ref(0.6652, C.truth, "dot")] }));
+    plot("cv-drift", [{ type: "scatter", mode: "lines+markers", x: k.map(function (x) { return x.epoch; }), y: k.map(function (x) { return x.drift_rel_mse; }), line: { color: C.model, width: 2.5 }, marker: { size: 5 } }],
+      base({ xaxis: logx, yaxis: ax({ title: { text: "drift relative MSE" } }), showlegend: false, shapes: [ref(0.69, C.null, "dash")] }));
+    plot("cv-u", [{ type: "scatter", mode: "lines+markers", x: k.map(function (x) { return x.epoch; }), y: k.map(function (x) { return x.u_effect_true_nutr; }), line: { color: C.model, width: 2.5 }, marker: { size: 5 } }],
+      base({ xaxis: logx, yaxis: ax({ title: { text: "effect on nutrient axis (/yr)" } }), showlegend: false, shapes: [ref(-0.020, C.truth, "dash")] }));
+  }
+
   // ---------------- Figure 4: frailty ----------------
   function surf(L, Z, H, scale, showscale) {
     return { type: "surface", x: L.x, y: L.y, z: Z, surfacecolor: H, cmin: 0, cmax: scale, colorscale: hazardScale(),
@@ -850,7 +964,7 @@ conda run -n mwm python scripts/make_model_a_figure_data.py</pre>
 
   function drawAll() {
     readColors();
-    drawLandscape(); milestoneTable(); drawScenarios(); drawFrailty(); drawRecovery(); drawFan(); drawMaeDt(); drawHallmarks(); scoreboard();
+    drawLandscape(); milestoneTable(); drawScenarios(); drawReality(); drawConvergence(); drawFrailty(); drawRecovery(); drawFan(); drawMaeDt(); drawHallmarks(); scoreboard();
   }
   function bind() {
     function seg(id, on) { document.getElementById(id).setAttribute("aria-pressed", on ? "true" : "false"); }
