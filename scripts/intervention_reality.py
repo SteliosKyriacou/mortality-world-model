@@ -269,5 +269,15 @@ trial = {"hba1c_rate": {"observed_diff": obs_diff, "observed_ci95": obs_ci, "mod
                       "n": {str(u): int((u_base == u).sum()) for u in (0, 1)},
                       "deaths": {str(u): int(e_obs[u_base == u].sum()) for u in (0, 1)}}}
 outp = Path(args.out) / f"intervention_reality_{args.tag}.json"
-outp.write_text(json.dumps(jsonable({"run": str(run), "per_person": pp, "trial": trial}), allow_nan=False))
+def _finite(o):
+    if isinstance(o, float):
+        return o if np.isfinite(o) else None
+    if isinstance(o, list):
+        return [_finite(x) for x in o]
+    if isinstance(o, dict):
+        return {k: _finite(v) for k, v in o.items()}
+    return o
+
+
+outp.write_text(json.dumps(_finite(jsonable({"run": str(run), "per_person": pp, "trial": trial})), allow_nan=False))
 print("wrote", outp)
