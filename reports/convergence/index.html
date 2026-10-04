@@ -55,13 +55,13 @@ td.n, th.n { text-align: right; font-family: var(--font-mono); font-variant-nume
   <p class="cap"><b>Table 1 | Runs at a glance.</b> Best = checkpoint kept by the run's selection rule. Forecast error is decoded MAE for held-out people's last visit, predicted from their first (SD units; lower is better). Gradient-boosted trees score 0.665 on the same task.</p>
 
   <h2>1. Encoder: transformer vs HetGNN</h2>
-  <div class="col"><p>The encoder is trained first, for 40 epochs, then frozen. Validation reconstruction is the decoder's NLL on all measured markers of validation visits; validation hazard is the death-rate NLL.</p></div>
+  <div class="col"><p>The encoder is trained first, then frozen: 40 epochs for the reported models, 200 for the long runs shown here. Validation reconstruction is the decoder's NLL on all measured markers of validation visits; validation hazard is the death-rate NLL.</p></div>
   <div class="fig"><div class="panels">
     <div class="panel"><div class="ptitle"><b>a</b>Validation reconstruction NLL</div><div id="enc-rec" class="plot loading">Loading…</div></div>
     <div class="panel"><div class="ptitle"><b>b</b>Validation hazard NLL</div><div id="enc-haz" class="plot loading">Loading…</div></div>
     <div class="panel"><div class="ptitle"><b>c</b>Training loss (all terms)</div><div id="enc-tr" class="plot loading">Loading…</div></div>
   </div></div>
-  <p class="cap"><b>Figure 1 | Encoder convergence</b> (hallmarks-ON cohort, seed 0). Teal: transformer. Violet: HetGNN.</p>
+  <p class="cap"><b>Figure 1 | Encoder convergence</b> (hallmarks-ON cohort, seed 0, 200 encoder epochs; the reported models used 40). Teal: transformer. Violet: HetGNN.</p>
 
   <h2>2. Model A, 80 epochs, on each encoder</h2>
   <div class="col"><p>This is the training length used for the reported model. Loss is the Gaussian NLL of the next visit under 32 simulated futures. Every 10 epochs the run also measures forecast error and drift error against the true equation.</p></div>
@@ -74,14 +74,15 @@ td.n, th.n { text-align: right; font-family: var(--font-mono); font-variant-nume
   <p class="cap"><b>Figure 2 | Model A over 80 epochs.</b> Solid: transformer encoder. Dashed: HetGNN encoder. In (b), thick lines are held-out (test) people and thin lines are validation people. The dotted line is gradient-boosted trees (0.665).</p>
 
   <h2>3. The long runs</h2>
-  <div class="col"><p>Three long runs, epochs on a log scale. The first long Model A run kept a high learning rate (2×10⁻³) for thousands of epochs and blew up at epoch 1,855. The second used 5×10⁻⁴ and a penalty on steep drift; it stayed stable but overfit and was stopped at epoch 2,000. The long Model B run was stopped at epoch 18,368.</p></div>
+  <div class="col"><p>Three long runs, epochs on a log scale. The first long Model A run kept a high learning rate (2×10⁻³) for thousands of epochs and blew up at epoch 1,855. The second used 5×10⁻⁴ and a penalty on steep drift; it stayed stable but overfit and was stopped at epoch 2,000. A matching long run with the HetGNN encoder answers whether the graph encoder changes this. The long Model B run was stopped at epoch 18,368.</p></div>
   <div class="fig"><div class="panels">
-    <div class="panel"><div class="ptitle"><b>a</b>Model A long run: training vs validation NLL</div><div id="l-aloss" class="plot loading">Loading…</div></div>
+    <div class="panel"><div class="ptitle"><b>a</b>Model A long run, transformer encoder: training vs validation NLL</div><div id="l-aloss" class="plot loading">Loading…</div></div>
     <div class="panel"><div class="ptitle"><b>b</b>Held-out forecast error</div><div id="l-mae" class="plot loading">Loading…</div></div>
     <div class="panel"><div class="ptitle"><b>c</b>Drift error vs the true equation</div><div id="l-drift" class="plot loading">Loading…</div></div>
-    <div class="panel"><div class="ptitle"><b>d</b>Model B long run: training vs validation loss</div><div id="l-bloss" class="plot loading">Loading…</div></div>
+    <div class="panel"><div class="ptitle"><b>d</b>Model A long run, HetGNN encoder: training vs validation NLL</div><div id="l-hloss" class="plot loading">Loading…</div></div>
+    <div class="panel"><div class="ptitle"><b>e</b>Model B long run: training vs validation loss</div><div id="l-bloss" class="plot loading">Loading…</div></div>
   </div></div>
-  <p class="cap"><b>Figure 3 | Long training.</b> (a) Model A: the gap between training and validation NLL opens after about epoch 150, the signature of overfitting. The diverged run is in red; its loss is clipped at 12 and ends where it became NaN. (b) Forecast error for held-out people. Dashed: the 80-epoch Model A (0.655). Dotted: gradient-boosted trees (0.665). (c) Relative MSE of the learned drift against the true drift (log scale). (d) Model B's flow-matching loss: validation rises within the first few thousand epochs while training keeps falling.</p>
+  <p class="cap"><b>Figure 3 | Long training.</b> (a) Model A, transformer encoder: the gap between training and validation NLL opens after about epoch 150, the signature of overfitting. The diverged run is in red; its loss is clipped at 12 and ends where it became NaN. (b) Forecast error for held-out people. Dashed: the 80-epoch Model A (0.655). Dotted: gradient-boosted trees (0.665). (c) Relative MSE of the learned drift against the true drift (log scale). (d) The same run on the HetGNN encoder: the gap opens after about epoch 200. NLL values are not comparable between (a) and (d), because each encoder has its own latent noise level; compare the shapes. (e) Model B's flow-matching loss: validation rises within the first few thousand epochs while training keeps falling.</p>
 </div>
 
 <script>
@@ -110,7 +111,7 @@ td.n, th.n { text-align: right; font-family: var(--font-mono); font-variant-nume
   var ENC = [["a80_transformer", "transformer", function () { return C.model; }, "solid"], ["a80_hetgnn", "HetGNN", function () { return C.violet; }, "dash"]];
 
   function summary() {
-    var rows = [["a80_transformer", "transformer"], ["a80_hetgnn", "HetGNN"], ["a_long", "transformer (200 ep)"], ["a_long_diverged", "transformer (200 ep)"], ["b_long", "transformer (200 ep)"]];
+    var rows = [["a80_transformer", "transformer"], ["a80_hetgnn", "HetGNN"], ["a_long", "transformer (200 ep)"], ["a_long_hetgnn", "HetGNN (200 ep)"], ["a_long_diverged", "transformer (200 ep)"], ["b_long", "transformer (200 ep)"]];
     var h = "<table><thead><tr><th>Run</th><th>Encoder</th><th class='n'>Epochs trained</th><th class='n'>Best epoch</th><th class='n'>Best held-out forecast error</th><th class='n'>Drift error at best</th></tr></thead><tbody>";
     rows.forEach(function (r) {
       var R = D[r[0]]; if (!R) return;
@@ -126,7 +127,9 @@ td.n, th.n { text-align: right; font-family: var(--font-mono); font-variant-nume
   }
 
   function encoder() {
-    var have = ENC.filter(function (e) { return D[e[0]] && D[e[0]].encoder_history.length; });
+    var ENC200 = [["a_long", "transformer", function () { return C.model; }, "solid"], ["a_long_hetgnn", "HetGNN", function () { return C.violet; }, "dash"]];
+    var have = ENC200.filter(function (e) { return D[e[0]] && D[e[0]].encoder_history.length; });
+    if (have.length < 2) have = ENC.filter(function (e) { return D[e[0]] && D[e[0]].encoder_history.length; });
     if (!have.length) { ["enc-rec","enc-haz","enc-tr"].forEach(function (id) { empty(id, "Encoder runs still training."); }); return; }
     [["enc-rec", "val_rec", "NLL"], ["enc-haz", "val_haz", "NLL"], ["enc-tr", "train_loss", "loss"]].forEach(function (p) {
       plot(p[0], have.map(function (e) { var H = D[e[0]].encoder_history;
@@ -162,15 +165,20 @@ td.n, th.n { text-align: right; font-family: var(--font-mono); font-variant-nume
     var tr = [];
     if (A) { tr.push({ type: "scatter", mode: "lines", x: ep1(A.history), y: col(A.history, "train"), name: "training (long run)", line: { color: C.null, width: 2 } });
              tr.push({ type: "scatter", mode: "lines", x: ep1(A.history), y: col(A.history, "val"), name: "validation (long run)", line: { color: C.model, width: 2 } }); }
+    var H = D.a_long_hetgnn;
+    if (H) plot("l-hloss", [
+      { type: "scatter", mode: "lines", x: ep1(H.history), y: col(H.history, "train"), name: "training", line: { color: C.null, width: 2 } },
+      { type: "scatter", mode: "lines", x: ep1(H.history), y: col(H.history, "val"), name: "validation", line: { color: C.pass, width: 2 } }
+    ], base({ xaxis: logx(), yaxis: ax({ title: { text: "NLL per pair" } }) }));
     if (X) { tr.push({ type: "scatter", mode: "lines", x: ep1(X.history), y: col(X.history, "val").map(function (v) { return v === null ? null : Math.min(v, 12); }), name: "validation (diverged run)", line: { color: C.fail, width: 1.5 } }); }
     plot("l-aloss", tr, base({ xaxis: logx(), yaxis: ax({ title: { text: "NLL per pair" }, range: [2.5, 12] }) }));
     var m = [];
-    [[A, "Model A long", C.model], [X, "Model A diverged", C.fail], [B, "Model B long", C.violet]].forEach(function (r) {
+    [[A, "Model A long (transformer)", C.model], [D.a_long_hetgnn, "Model A long (HetGNN)", C.pass], [X, "Model A diverged", C.fail], [B, "Model B long", C.violet]].forEach(function (r) {
       if (!r[0]) return; var K = r[0].checkpoints.filter(function (c) { return c.test_mae !== null && c.test_mae < 3; });
       m.push({ type: "scatter", mode: "lines+markers", x: ep1(K), y: col(K, "test_mae"), name: r[1], line: { color: r[2], width: 2.5 }, marker: { size: 5 } }); });
     plot("l-mae", m, base({ xaxis: logx(), yaxis: ax({ title: { text: "held-out MAE (SD units)" }, range: [0.62, 1.15] }), shapes: [ref(0.6547, C.null, "dash"), ref(0.665, C.truth, "dot")] }));
     var dr = [];
-    [[A, "Model A long", C.model], [X, "Model A diverged", C.fail], [B, "Model B long", C.violet]].forEach(function (r) {
+    [[A, "Model A long (transformer)", C.model], [D.a_long_hetgnn, "Model A long (HetGNN)", C.pass], [X, "Model A diverged", C.fail], [B, "Model B long", C.violet]].forEach(function (r) {
       if (!r[0]) return; var K = r[0].checkpoints.filter(function (c) { return c.drift_rel_mse !== null; });
       dr.push({ type: "scatter", mode: "lines+markers", x: ep1(K), y: col(K, "drift_rel_mse"), name: r[1], line: { color: r[2], width: 2.5 }, marker: { size: 5 } }); });
     plot("l-drift", dr, base({ xaxis: logx(), yaxis: ax({ title: { text: "drift relative MSE" }, type: "log" }) }));

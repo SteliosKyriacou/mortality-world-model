@@ -11,6 +11,7 @@ RUNS = {
     "a80_hetgnn": ("Model A, 80 epochs, HetGNN encoder", "runs/encoder_cmp/on/hetgnn_seed0/convergence.json"),
     "a80_transformer": ("Model A, 80 epochs, transformer encoder", "runs/encoder_cmp/on/transformer_seed0/convergence.json"),
     "a_long": ("Model A long run (lr 5e-4, stiffness penalty)", "runs/long/on/seed0/convergence.json"),
+    "a_long_hetgnn": ("Model A long run, HetGNN encoder (lr 5e-4, stiffness penalty)", "runs/long/on/hetgnn_seed0/convergence.json"),
     "a_long_diverged": ("Model A first long run (lr 2e-3, diverged)", "runs/long/on/seed0_diverged_2026-10-04/convergence.json"),
     "b_long": ("Model B long run", "runs/long_b/on/seed0/convergence.json"),
 }
