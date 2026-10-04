@@ -342,7 +342,18 @@ out["clinical_features"] = ON["ca"].clinical
 out["cohort"] = {"n_persons": int(ON["lat"].person_id.nunique()), "n_visits": int(len(ON["lat"])),
                  "events_on": int(ON["ca"].outcomes.event.sum()), "events_off": int(OFF["ca"].outcomes.event.sum())}
 Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-Path(args.out).write_text(json.dumps(jsonable(out)))
+def finite(o):
+    """Browsers reject NaN/Infinity in JSON: write them as null."""
+    if isinstance(o, float):
+        return o if np.isfinite(o) else None
+    if isinstance(o, list):
+        return [finite(x) for x in o]
+    if isinstance(o, dict):
+        return {k: finite(v) for k, v in o.items()}
+    return o
+
+
+Path(args.out).write_text(json.dumps(finite(jsonable(out)), allow_nan=False))
 print("wrote", args.out, round(Path(args.out).stat().st_size / 1e6, 2), "MB")
 for k in out:
     if k.startswith("landscape"):
