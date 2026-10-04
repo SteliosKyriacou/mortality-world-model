@@ -136,6 +136,34 @@ def simulate(D, Z0, A0, end_age, u, K, steps_per_year=4):
     return path.cpu().numpy(), ages  # (n+1, K, B, d), (n+1, B)
 
 
+def simulate_scenarios(D, z0, a0, end_age, starts, K=256, steps_per_year=4, seed=0):
+    """Euler-Maruyama from one person's baseline with u(a) = 1 once age >= start (None = never).
+    Every scenario reuses the same Brownian increments (common random numbers), so differences
+    between scenarios are due to the intervention only. Returns {name: (n+1, K, d)}, ages."""
+    m = D["m"]
+    n = int(round((end_age - a0) * steps_per_year))
+    h = (end_age - a0) / n
+    ages = a0 + h * np.arange(n + 1)
+    g = torch.Generator(device=dev).manual_seed(seed)
+    eps = torch.randn((n, K, len(z0)), generator=g, device=dev)
+    out = {}
+    for name, start in starts.items():
+        z = T(np.repeat(np.asarray(z0)[None], K, 0), dev)
+        path = [z]
+        for i in range(n):
+            a = float(ages[i])
+            u = 1.0 if (start is not None and a >= start - 1e-9) else 0.0
+            at = torch.full((K,), a, device=dev)
+            ut = torch.full((K, 1), u, device=dev)
+            f = m.drift(z, at, ut).detach()
+            with torch.no_grad():
+                sg = m.diffusion(z, at)
+            z = (z + f * h + sg * np.sqrt(h) * eps[i]).detach()
+            path.append(z)
+        out[name] = torch.stack(path).cpu().numpy()
+    return out, ages
+
+
 def simulate_true(D, z0, a0, end_age, u, K, dt=0.05, seed=0):
     r = np.random.default_rng(seed)
     tc = D["tcfg"]
@@ -201,11 +229,16 @@ for tag, D in (("on", ON), ("off", OFF)):
     cand = base[(base.visit_age >= 40) & (base.visit_age < 46)]
     pick = cand.sample(10, random_state=3)
     Z0, A0 = pick[D["zc"]].to_numpy(), pick.visit_age.to_numpy()
+    e_nutr = plane_dir(D, 2, w)
+    torch.manual_seed(0)   # common random numbers for u = 0 vs u = 1
     path0, pages = simulate(D, Z0, A0, 90.0, 0.0, 96)
     torch.manual_seed(0)
     path1, _ = simulate(D, Z0, A0, 90.0, 1.0, 96)
+    # intervention scenarios for the index person (b = 0): u switches on at different ages
+    SCEN_STARTS = {"none": None, "baseline": float(A0[0]), "55": 55.0, "65": 65.0, "75": 75.0}
+    scen, scen_ages = simulate_scenarios(D, Z0[0], float(A0[0]), 90.0, SCEN_STARTS, K=256)
     allp = path0.reshape(-1, path0.shape[-1]) - origin
-    for name, e2, k in (("infl", e_infl, 1), ("frail", e_frail, 5)):
+    for name, e2, k in (("infl", e_infl, 1), ("frail", e_frail, 5), ("nutr", e_nutr, 2)):
         px, py = allp @ w, allp @ e2
         sy = (Zte - origin) @ e2
         xr = (np.quantile(np.r_[px, (Zte - origin) @ w], 0.005) - 0.3, np.quantile(px, 0.995) + 0.3)
@@ -231,7 +264,12 @@ for tag, D in (("on", ON), ("off", OFF)):
         out[f"landscape_learned_{name}"] = {**{k: (v.round(5).tolist() if isinstance(v, np.ndarray) else v)
                                                for k, v in S.items() if k not in ("fx", "fy")},
                                             "paths": paths, "states": states.round(4).tolist(),
-                                            "state_proj_y": sy.round(4).tolist()}
+                                            "state_proj_y": sy.round(4).tolist(),
+                                            "scenarios": {s: {"age": scen_ages[::2].round(2).tolist(),
+                                                              "mean": lift(P.mean(1))[::2].round(4).tolist()}
+                                                          for s, P in scen.items()}}
+        if name == "nutr":
+            continue
         # ground truth, true latent: plane (z0, z_k), other coords at test mean
         tt = D["Zt"][(lat.split == "test").to_numpy()]
         ok = np.isfinite(tt).all(1)
@@ -277,6 +315,59 @@ for tag, D in (("on", ON), ("off", OFF)):
                    "annual_death_prob_q10_q90": [np.quantile(1 - np.exp(-np.exp(lhs)), q, axis=1).round(4).tolist()
                                                  for q in (0.1, 0.9)]})
     out["milestones"] = ms
+    # ---------------- intervention scenarios (index person) ----------------
+    QS = [0.1, 0.25, 0.5, 0.75, 0.9]
+    SC_MARKERS = ["hba1c", "glucose", "insulin", "triglycerides", "crp", "sbp", "egfr", "grip", "frailty_index"]
+    h = scen_ages[1] - scen_ages[0]
+    rawS = {s: raw_markers(D, P, SC_MARKERS) for s, P in scen.items()}        # (n+1, K) each
+    lhS = {s: log_hazard_np(D["bundle"], P) for s, P in scen.items()}         # (n+1, K)
+    sc_out = {"ages": scen_ages.round(2).tolist(), "starts": SCEN_STARTS, "quantiles": QS,
+              "index_person_age": float(A0[0]), "K": int(next(iter(scen.values())).shape[1]), "scenarios": {}}
+    for s in scen:
+        lam = np.exp(lhS[s])
+        cum = np.concatenate([np.zeros((1, lam.shape[1])), np.cumsum(0.5 * (lam[1:] + lam[:-1]) * h, 0)])
+        surv = np.exp(-cum).mean(1)
+        sc_out["scenarios"][s] = {
+            "markers": {f: np.quantile(v, QS, axis=1).round(3).tolist() for f, v in rawS[s].items()},
+            "diff_vs_none": {f: np.quantile(v - rawS["none"][f], QS, axis=1).round(3).tolist()
+                             for f, v in rawS[s].items()},
+            "annual_death_prob": np.quantile(1 - np.exp(-lam), QS, axis=1).round(5).tolist(),
+            "survival": surv.round(5).tolist(),
+            # restricted mean survival time between index age and 90 (years alive)
+            "rmst_to_90": float(np.trapezoid(surv, scen_ages)),
+        }
+    for s in scen:
+        sc_out["scenarios"][s]["rmst_gain_vs_none"] = sc_out["scenarios"][s]["rmst_to_90"] - \
+            sc_out["scenarios"]["none"]["rmst_to_90"]
+    # same scenarios under the TRUE equation from this person's true state (validation)
+    tc = D["tcfg"]
+    zt0 = D["Zt"][pick.index.to_numpy()[0]]
+    r = np.random.default_rng(1)
+    Kt, dtt = 4000, 0.05
+    nt = int(round((90.0 - A0[0]) / dtt))
+    tages = A0[0] + dtt * np.arange(nt + 1)
+    E = r.normal(size=(nt, Kt, 8))
+    true_sc = {}
+    for s, start in SCEN_STARTS.items():
+        z = np.tile(zt0, (Kt, 1))
+        cum = np.zeros(Kt)
+        lam_prev = np.exp(syn.true_log_hazard(z, tc))
+        surv = [1.0]
+        z2 = [z[:, 2].mean()]
+        for i in range(nt):
+            a = tages[i]
+            u = 1.0 if (start is not None and a >= start - 1e-9) else 0.0
+            z = z + syn.true_drift(z, np.full(Kt, a), np.full(Kt, u), tc) * dtt + \
+                syn.true_diffusion(z, np.full(Kt, a), tc) * np.sqrt(dtt) * E[i]
+            lam = np.exp(syn.true_log_hazard(z, tc))
+            cum += 0.5 * (lam + lam_prev) * dtt
+            lam_prev = lam
+            surv.append(float(np.exp(-cum).mean()))
+        true_sc[s] = {"rmst_to_90": float(np.trapezoid(surv, tages)), "survival": np.round(surv[::5], 5).tolist()}
+    for s in true_sc:
+        true_sc[s]["rmst_gain_vs_none"] = true_sc[s]["rmst_to_90"] - true_sc["none"]["rmst_to_90"]
+    sc_out["truth"] = {"ages": tages[::5].round(2).tolist(), "scenarios": true_sc}
+    out["scenarios"] = sc_out
     # ---------------- single-patient forecast fan ----------------
     lt = te.copy()
     nvis = lt.groupby("person_id").size()

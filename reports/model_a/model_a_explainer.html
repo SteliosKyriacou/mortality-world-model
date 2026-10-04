@@ -130,6 +130,7 @@ footer { max-width: var(--measure); margin: 4rem auto 0; font-family: var(--font
     <li><a href="#world">The synthetic world we tested it in</a></li>
     <li><a href="#model">The model, exactly</a></li>
     <li><a href="#landscape">The aging landscape it learned</a></li>
+    <li><a href="#intervention">What an intervention does</a></li>
     <li><a href="#recovery">Does it recover the truth?</a></li>
     <li><a href="#forecast">Forecasting real futures</a></li>
     <li><a href="#hallmarks">Hallmark tests</a></li>
@@ -278,6 +279,45 @@ footer { max-width: var(--measure); margin: 4rem auto 0; font-family: var(--font
   <div class="fig-body tbl-wrap"><table class="milestones" id="ms-table"><tr><td class="loading">Loading…</td></tr></table></div>
   <figcaption><b>Table 1 | One forecast, decoded.</b> Synthetic markers in their simulated units. Death probability is per year, read from the hazard head; the range is the 10th–90th percentile across the 96 futures. The intervention halves the true nutrient-axis drift. Here it slows HbA1c by about 4 mmol/mol by age 90 and leaves the other systems essentially unchanged, which is what was planted.</figcaption>
 </figure>
+
+<section class="col" id="intervention">
+<h3>What the intervention does to the index person</h3>
+<p>The model has one intervention it can apply: <i>u</i>, the randomised nutrient-sensing treatment planted in the synthetic world (it halves the drift of the true metabolic axis). In training, people who got it got it from their baseline visit. Here we switch it on for the index person at baseline (42.6), 55, 65 or 75 and simulate 256 futures per scenario to age 90. Every scenario reuses the <i>same</i> 256 random noise sequences. Each future with the intervention therefore has an exact twin without it, and the difference between the twins is the intervention's effect alone. Later starts are an extrapolation: the model never saw anyone start treatment mid-follow-up.</p>
+<p>Because this world is synthetic, we can run the same scenarios through the <b>true</b> equation from this person's true hidden state (4,000 futures) and check the model's answer.</p>
+</section>
+<figure id="fig3b">
+  <div class="fig-body">
+    <div class="controls" role="group" aria-label="Intervention start">
+      <span class="lab">Start intervention at</span>
+      <button class="seg sc-btn" data-s="baseline" aria-pressed="true" type="button">baseline (42.6)</button>
+      <button class="seg sc-btn" data-s="55" aria-pressed="false" type="button">55</button>
+      <button class="seg sc-btn" data-s="65" aria-pressed="false" type="button">65</button>
+      <button class="seg sc-btn" data-s="75" aria-pressed="false" type="button">75</button>
+    </div>
+    <div class="controls" role="group" aria-label="Marker">
+      <span class="lab">Marker</span>
+      <button class="seg scm-btn" data-f="hba1c" aria-pressed="true" type="button">HbA1c</button>
+      <button class="seg scm-btn" data-f="glucose" aria-pressed="false" type="button">Glucose</button>
+      <button class="seg scm-btn" data-f="insulin" aria-pressed="false" type="button">Insulin</button>
+      <button class="seg scm-btn" data-f="triglycerides" aria-pressed="false" type="button">Triglycerides</button>
+      <button class="seg scm-btn" data-f="crp" aria-pressed="false" type="button">CRP</button>
+      <button class="seg scm-btn" data-f="sbp" aria-pressed="false" type="button">Systolic BP</button>
+      <button class="seg scm-btn" data-f="grip" aria-pressed="false" type="button">Grip</button>
+    </div>
+    <div class="panels">
+      <div class="panel"><span class="pl">a</span><div class="ptitle">Forecast with and without the intervention</div><div id="sc-traj" class="plot loading">Loading…</div></div>
+      <div class="panel"><span class="pl">b</span><div class="ptitle">Effect: each future minus its untreated twin</div><div id="sc-diff" class="plot loading">Loading…</div></div>
+      <div class="panel"><span class="pl">c</span><div class="ptitle">Survival from 42.6: model vs true equation</div><div id="sc-surv" class="plot loading">Loading…</div></div>
+      <div class="panel"><span class="pl">d</span><div class="ptitle">The intervention in the landscape (nutrient plane)</div><div id="sc-land" class="plot loading">Loading…</div></div>
+    </div>
+    <div class="tbl-wrap" style="margin-top:12px"><table id="sc-table"><tr><td class="loading">Loading…</td></tr></table></div>
+  </div>
+  <figcaption><b>Figure 3b | Intervention scenarios for the index person.</b> (a) Median and 10–90% band of the selected marker across 256 futures, untreated (grey) vs treated from the selected age (coloured); the dotted line marks the start. (b) Paired effect: the treated future minus its untreated twin, median with 50% and 80% bands. A band away from zero means a real effect for this person, not noise. (c) Probability of being alive. Solid lines are the model (hazard head integrated along the simulated paths); dashed lines are the true equation and true hazard from the same person's true state. (d) The learned landscape in the plane spanned by the arrow of aging and the latent direction that best predicts the true nutrient axis (11% rotational flow). Mean paths for every scenario: each start age peels off the untreated path at that age and runs along a lower track. Table: years alive between 42.6 and 90 (restricted mean survival time) and the gain over no treatment, model vs truth.</figcaption>
+</figure>
+
+<section class="col">
+<p><b>Reading the result.</b> The model gets the metabolic effect right and specific. HbA1c and glucose bend down, starting at the moment of treatment and growing with time. By 90, treatment from baseline lowers HbA1c by a median 4.1 mmol/mol (80% of twins: 2.6–6.1). The non-metabolic markers barely move: their paired effect bands straddle zero, as planted. It also gets the order of benefit right: the earlier the start, the larger the gain. But it <b>underestimates the survival benefit by about half</b>: +0.45 years alive before 90 against +0.98 in the truth when started at baseline, and none at all for starts at 65 or 75 where the truth still gives +0.23 and +0.05. The cause is the hazard head, not the dynamics. It was fitted once on the encoder's latent and gives the metabolic direction too little weight. This is the same weakness that makes the model's survival predictions no better than a Cox model (§6). Training the hazard along simulated paths (§9) is the fix to try.</p>
+</section>
 
 <section class="col">
 <h3>Where it goes wrong: the frailty basin</h3>
@@ -480,7 +520,7 @@ conda run -n mwm python scripts/make_model_a_figure_data.py</pre>
 (function () {
   "use strict";
   var D = null;
-  var state = { u: 0, cloud: true, fan: "crp" };
+  var state = { u: 0, cloud: true, fan: "crp", sc: "baseline", scm: "hba1c" };
   var css = function (v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); };
   var C = {};
   function readColors() {
@@ -598,6 +638,63 @@ conda run -n mwm python scripts/make_model_a_figure_data.py</pre>
         "% <span style='color:var(--muted)'>(" + (100 * q[0][i]).toFixed(1) + "–" + (100 * q[1][i]).toFixed(0) + "%)</span></td></tr>";
     });
     document.getElementById("ms-table").innerHTML = h + "</tbody>";
+  }
+
+  // ---------------- Figure 3b: intervention scenarios ----------------
+  var SC_LABEL = { none: "no intervention", baseline: "from baseline (42.6)", "55": "from 55", "65": "from 65", "75": "from 75" };
+  var SC_UNITS = { hba1c: "HbA1c (mmol/mol)", glucose: "Glucose (mmol/L)", insulin: "Insulin (pmol/L)", triglycerides: "Triglycerides (mmol/L)", crp: "CRP (mg/L)", sbp: "Systolic BP (mmHg)", grip: "Grip (kg)" };
+  function sgn2(v) { var r = Math.abs(v) < 0.005 ? 0 : v; return (r > 0 ? "+" : (r < 0 ? "−" : "")) + Math.abs(r).toFixed(2); }
+  function scColor(s) { return { none: C.null, baseline: C.model, "55": C.pass, "65": C.truth, "75": C.fail }[s]; }
+  function scStart(s) { var v = D.scenarios.starts[s]; return v === null || v === undefined ? null : v; }
+  function band(x, lo, hi, color, a, name, show) {
+    return [{ type: "scatter", x: x, y: hi, mode: "lines", line: { width: 0 }, hoverinfo: "skip", showlegend: false },
+            { type: "scatter", x: x, y: lo, mode: "lines", line: { width: 0 }, fill: "tonexty", fillcolor: hexA(color, a), name: name, showlegend: !!show, hoverinfo: "skip" }];
+  }
+  function startLine(s) {
+    var a = scStart(s); if (a === null) return [];
+    return [{ type: "line", x0: a, x1: a, y0: 0, y1: 1, yref: "paper", line: { color: scColor(s), width: 1.5, dash: "dot" } }];
+  }
+  function drawScenarios() {
+    var S = D.scenarios, x = S.ages, s = state.sc, f = state.scm;
+    var q0 = S.scenarios.none.markers[f], q1 = S.scenarios[s].markers[f];
+    var tr = [].concat(
+      band(x, q0[0], q0[4], C.null, 0.18, "untreated 10–90%", false),
+      [{ type: "scatter", x: x, y: q0[2], mode: "lines", line: { color: C.null, width: 2.5 }, name: "no intervention", hovertemplate: "age %{x:.1f}: %{y:.2f}<extra>untreated</extra>" }],
+      band(x, q1[0], q1[4], scColor(s), 0.18, "treated 10–90%", false),
+      [{ type: "scatter", x: x, y: q1[2], mode: "lines", line: { color: scColor(s), width: 3 }, name: "intervention " + SC_LABEL[s], hovertemplate: "age %{x:.1f}: %{y:.2f}<extra>treated</extra>" }]);
+    plot("sc-traj", tr, base({ xaxis: ax({ title: { text: "age" } }), yaxis: ax({ title: { text: SC_UNITS[f] } }), shapes: startLine(s), legend: { orientation: "h", x: 0, y: -0.25, font: { size: 10 } }, margin: { l: 56, r: 10, t: 10, b: 80 } }));
+    var d = S.scenarios[s].diff_vs_none[f];
+    var dt = [].concat(
+      band(x, d[0], d[4], scColor(s), 0.15, "80% of twins", true),
+      band(x, d[1], d[3], scColor(s), 0.3, "50% of twins", true),
+      [{ type: "scatter", x: x, y: d[2], mode: "lines", line: { color: scColor(s), width: 3 }, name: "median effect", hovertemplate: "age %{x:.1f}: %{y:+.2f}<extra>treated − untreated</extra>" }]);
+    plot("sc-diff", dt, base({ xaxis: ax({ title: { text: "age" } }), yaxis: ax({ title: { text: "change in " + SC_UNITS[f] } }),
+      shapes: startLine(s).concat([{ type: "line", x0: 0, x1: 1, xref: "paper", y0: 0, y1: 0, line: { color: C.ink, width: 1 } }]),
+      legend: { orientation: "h", x: 0, y: -0.25, font: { size: 10 } }, margin: { l: 56, r: 10, t: 10, b: 80 } }));
+    var T = S.truth;
+    var st = ["none", s].map(function (k) {
+      return [{ type: "scatter", x: x, y: S.scenarios[k].survival, mode: "lines", line: { color: scColor(k), width: 3 }, name: "model, " + SC_LABEL[k], hovertemplate: "age %{x:.1f}: %{y:.1%}<extra></extra>" },
+              { type: "scatter", x: T.ages, y: T.scenarios[k].survival, mode: "lines", line: { color: scColor(k), width: 2, dash: "dash" }, name: "truth, " + SC_LABEL[k], hovertemplate: "age %{x:.1f}: %{y:.1%}<extra></extra>" }];
+    });
+    plot("sc-surv", [].concat(st[0], st[1]), base({ xaxis: ax({ title: { text: "age" } }), yaxis: ax({ title: { text: "probability alive" }, tickformat: ".0%", range: [0, 1.02] }), shapes: startLine(s), legend: { orientation: "h", x: 0, y: -0.25, font: { size: 10 } }, margin: { l: 56, r: 10, t: 10, b: 96 } }));
+    var L = D.landscape_learned_nutr;
+    var lt = [surf(L, transpose(L.U), transpose(hazardProb(L.log_hazard)), 0.25, false)];
+    ["none", "baseline", "55", "65", "75"].forEach(function (k) {
+      var m = L.scenarios[k].mean, sel = (k === s || k === "none");
+      lt.push({ type: "scatter3d", mode: "lines", x: col(m, 0), y: col(m, 1), z: col(m, 2).map(function (v) { return v + 0.05; }),
+        line: { color: scColor(k), width: sel ? 7 : 3 }, opacity: sel ? 1 : 0.45, name: SC_LABEL[k],
+        text: L.scenarios[k].age.map(function (a) { return "age " + a.toFixed(1); }), hovertemplate: "%{text}<extra>" + SC_LABEL[k] + "</extra>" });
+    });
+    plot("sc-land", lt, base({ margin: { l: 0, r: 0, t: 0, b: 0 }, scene: Object.assign(scene3("arrow of aging →", "nutrient direction"), { camera: { eye: { x: -0.6, y: -2.0, z: 0.9 } } }),
+      legend: { orientation: "h", x: 0, y: 1.02, font: { size: 10 }, bgcolor: "rgba(0,0,0,0)" } }));
+    var h = "<thead><tr><th>Intervention</th><th class='n'>Years alive 42.6–90, model</th><th class='n'>gain</th><th class='n'>Years alive, truth</th><th class='n'>gain</th><th class='n'>HbA1c at 90, model (median effect)</th></tr></thead><tbody>";
+    ["none", "baseline", "55", "65", "75"].forEach(function (k) {
+      var m = S.scenarios[k], t = T.scenarios[k], dd = m.diff_vs_none.hba1c[2];
+      h += "<tr" + (k === s ? " style='font-weight:600'" : "") + "><td><span class='key' style='background:" + scColor(k) + "'></span>" + SC_LABEL[k] + "</td><td class='n'>" + m.rmst_to_90.toFixed(2) +
+        "</td><td class='n'>" + (k === "none" ? "—" : sgn2(m.rmst_gain_vs_none)) + "</td><td class='n'>" + t.rmst_to_90.toFixed(2) +
+        "</td><td class='n'>" + (k === "none" ? "—" : sgn2(t.rmst_gain_vs_none)) + "</td><td class='n'>" + (k === "none" ? "—" : (dd[dd.length - 1] >= 0 ? "+" : "") + dd[dd.length - 1].toFixed(1) + " mmol/mol") + "</td></tr>";
+    });
+    document.getElementById("sc-table").innerHTML = h + "</tbody>";
   }
 
   // ---------------- Figure 4: frailty ----------------
@@ -753,7 +850,7 @@ conda run -n mwm python scripts/make_model_a_figure_data.py</pre>
 
   function drawAll() {
     readColors();
-    drawLandscape(); milestoneTable(); drawFrailty(); drawRecovery(); drawFan(); drawMaeDt(); drawHallmarks(); scoreboard();
+    drawLandscape(); milestoneTable(); drawScenarios(); drawFrailty(); drawRecovery(); drawFan(); drawMaeDt(); drawHallmarks(); scoreboard();
   }
   function bind() {
     function seg(id, on) { document.getElementById(id).setAttribute("aria-pressed", on ? "true" : "false"); }
@@ -765,6 +862,15 @@ conda run -n mwm python scripts/make_model_a_figure_data.py</pre>
         state.fan = b.getAttribute("data-f");
         Array.prototype.forEach.call(document.querySelectorAll(".fan-btn"), function (x) { x.setAttribute("aria-pressed", x === b ? "true" : "false"); });
         drawFan();
+      });
+    });
+    [[".sc-btn", "sc", "data-s"], [".scm-btn", "scm", "data-f"]].forEach(function (g) {
+      Array.prototype.forEach.call(document.querySelectorAll(g[0]), function (b) {
+        b.addEventListener("click", function () {
+          state[g[1]] = b.getAttribute(g[2]);
+          Array.prototype.forEach.call(document.querySelectorAll(g[0]), function (x) { x.setAttribute("aria-pressed", x === b ? "true" : "false"); });
+          if (D) drawScenarios();
+        });
       });
     });
     try { window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () { if (D) drawAll(); }); } catch (e) {}
