@@ -32,6 +32,7 @@ ap.add_argument("--data", default="data/synthetic/on")
 ap.add_argument("--n-people", type=int, default=600)
 ap.add_argument("--tag", default="v1")
 ap.add_argument("--out", default="reports/model_a")
+ap.add_argument("--model", default="A", choices=["A", "B"])
 args = ap.parse_args()
 dev = "cuda"
 rng = np.random.default_rng(0)
@@ -43,9 +44,13 @@ bundle = EncoderBundle.load(run / "encoder.pt").to(dev)
 lat = pd.read_parquet(run / "latents.parquet")
 zc = [c for c in lat.columns if c.startswith("z_")]
 d = len(zc)
-m = NeuralSDE(d, hidden=128, solver="native", n_steps=32).to(dev)
-m.set_obs_noise(json.loads((run / "encoder_meta.json").read_text())["latent_obs_noise_var"])
-m.load_state_dict(torch.load(run / "model_A.pt", map_location=dev, weights_only=True))
+if args.model == "A":
+    m = NeuralSDE(d, hidden=128, solver="native", n_steps=32).to(dev)
+    m.set_obs_noise(json.loads((run / "encoder_meta.json").read_text())["latent_obs_noise_var"])
+else:
+    from mwm.dynamics.flow import FlowModel
+    m = FlowModel(d, hidden=128, jac_penalty=0.1).to(dev)
+m.load_state_dict(torch.load(run / f"model_{args.model}.pt", map_location=dev, weights_only=True))
 m.eval()
 feats_true = meta["clinical_features"]
 J_HBA = feats_true.index("hba1c")
@@ -82,7 +87,8 @@ def sim_model(Z0, A0, U, years, K, seed, spy=4):
         with torch.no_grad():
             s = m.diffusion(z, a)
         eps = torch.randn(z.shape, generator=g, device=dev)
-        z = (z + f * h + s * np.sqrt(h) * eps).detach()
+        noise = 0.0 if s is None else s * np.sqrt(h) * eps
+        z = (z + f * h + noise).detach()
         path.append(z.cpu().numpy())
     return np.stack(path).reshape(n + 1, K, N, d), h
 
