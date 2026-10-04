@@ -1,0 +1,189 @@
+<title>Training Convergence Log</title>
+<meta name="description" content="Convergence of every training run of the mortality world model: encoders, Model A at 80 epochs, the long Model A runs and the long Model B run.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.32.0/plotly.min.js"></script>
+<style>
+/* Layout: lab-notebook page; a short reading column per section, figure panels in a responsive grid below it. */
+:root {
+  --bg: #f5f7f8; --panel: #ffffff; --ink: #15202b; --muted: #56636f; --rule: #d6dde3;
+  --model: #0d6f7c; --truth: #b0611c; --null: #7b8794; --fail: #b3374a; --pass: #2f7d4f; --violet: #6a4fa3;
+  --font-body: "Source Serif 4", Georgia, serif;
+  --font-ui: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #0f1419; --panel: #161d24; --ink: #e5eaee; --muted: #9aa6b1; --rule: #2a343e;
+    --model: #4fb4c1; --truth: #e2a25e; --null: #8794a1; --fail: #e27b8b; --pass: #6cc28f; --violet: #a68ce0; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --bg: #0f1419; --panel: #161d24; --ink: #e5eaee; --muted: #9aa6b1; --rule: #2a343e;
+  --model: #4fb4c1; --truth: #e2a25e; --null: #8794a1; --fail: #e27b8b; --pass: #6cc28f; --violet: #a68ce0; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 1.04rem; line-height: 1.6; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 20px; padding-block: 36px 70px; }
+.col { max-width: 68ch; }
+.kicker { font-family: var(--font-ui); font-size: .78rem; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .6rem; }
+h1 { font-size: clamp(1.9rem, 4vw, 2.6rem); line-height: 1.15; margin: 0 0 .8rem; text-wrap: balance; }
+h2 { font-size: 1.45rem; margin: 2.8rem 0 .6rem; text-wrap: balance; }
+p { margin: 0 0 .9rem; }
+code { font-family: var(--font-mono); font-size: .85em; }
+.fig { background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; padding: 12px; margin: 1.2rem 0 .6rem; }
+.panels { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); }
+.panel { min-width: 0; }
+.ptitle { font-family: var(--font-ui); font-size: .82rem; color: var(--muted); margin-bottom: 2px; }
+.ptitle b { color: var(--ink); margin-right: 4px; }
+.plot { width: 100%; height: 320px; }
+.cap { font-family: var(--font-ui); font-size: .85rem; color: var(--muted); line-height: 1.5; max-width: 95ch; margin-bottom: 1rem; }
+.cap b { color: var(--ink); }
+.loading { font-family: var(--font-ui); font-size: .85rem; color: var(--muted); display: grid; place-items: center; }
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; font-family: var(--font-ui); font-size: .86rem; width: 100%; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--rule); }
+th { font-size: .76rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+td.n, th.n { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+</style>
+
+<div class="wrap">
+  <p class="kicker">Mortality world model · training log · 4 October 2026</p>
+  <h1>How every training run converged</h1>
+  <div class="col">
+    <p>Each run records its losses every few epochs and, at checkpoints, measures what matters: forecast error on validation and held-out people, and how far the learned drift is from the true equation. A falling loss is not enough. A run has converged in a useful sense only when those numbers stop improving.</p>
+  </div>
+
+  <div class="tbl fig" id="summary"><span class="loading">Loading…</span></div>
+  <p class="cap"><b>Table 1 | Runs at a glance.</b> Best = checkpoint kept by the run's selection rule. Forecast error is decoded MAE for held-out people's last visit, predicted from their first (SD units; lower is better). Gradient-boosted trees score 0.665 on the same task.</p>
+
+  <h2>1. Encoder: transformer vs HetGNN</h2>
+  <div class="col"><p>The encoder is trained first, for 40 epochs, then frozen. Validation reconstruction is the decoder's NLL on all measured markers of validation visits; validation hazard is the death-rate NLL.</p></div>
+  <div class="fig"><div class="panels">
+    <div class="panel"><div class="ptitle"><b>a</b>Validation reconstruction NLL</div><div id="enc-rec" class="plot loading">Loading…</div></div>
+    <div class="panel"><div class="ptitle"><b>b</b>Validation hazard NLL</div><div id="enc-haz" class="plot loading">Loading…</div></div>
+    <div class="panel"><div class="ptitle"><b>c</b>Training loss (all terms)</div><div id="enc-tr" class="plot loading">Loading…</div></div>
+  </div></div>
+  <p class="cap"><b>Figure 1 | Encoder convergence</b> (hallmarks-ON cohort, seed 0). Teal: transformer. Violet: HetGNN.</p>
+
+  <h2>2. Model A, 80 epochs, on each encoder</h2>
+  <div class="col"><p>This is the training length used for the reported model. Loss is the Gaussian NLL of the next visit under 32 simulated futures. Every 10 epochs the run also measures forecast error and drift error against the true equation.</p></div>
+  <div class="fig"><div class="panels">
+    <div class="panel"><div class="ptitle"><b>a</b>Training and validation NLL</div><div id="a80-loss" class="plot loading">Loading…</div></div>
+    <div class="panel"><div class="ptitle"><b>b</b>Forecast error (validation, held-out)</div><div id="a80-mae" class="plot loading">Loading…</div></div>
+    <div class="panel"><div class="ptitle"><b>c</b>Drift error vs the true equation</div><div id="a80-drift" class="plot loading">Loading…</div></div>
+    <div class="panel"><div class="ptitle"><b>d</b>Recovered intervention effect (true −0.020/yr)</div><div id="a80-u" class="plot loading">Loading…</div></div>
+  </div></div>
+  <p class="cap"><b>Figure 2 | Model A over 80 epochs.</b> Solid: transformer encoder. Dashed: HetGNN encoder. In (b), thick lines are held-out (test) people and thin lines are validation people. The dotted line is gradient-boosted trees (0.665).</p>
+
+  <h2>3. The long runs</h2>
+  <div class="col"><p>Three long runs, epochs on a log scale. The first long Model A run kept a high learning rate (2×10⁻³) for thousands of epochs and blew up at epoch 1,855. The second used 5×10⁻⁴ and a penalty on steep drift; it stayed stable but overfit and was stopped at epoch 2,000. The long Model B run was stopped at epoch 18,368.</p></div>
+  <div class="fig"><div class="panels">
+    <div class="panel"><div class="ptitle"><b>a</b>Model A long run: training vs validation NLL</div><div id="l-aloss" class="plot loading">Loading…</div></div>
+    <div class="panel"><div class="ptitle"><b>b</b>Held-out forecast error</div><div id="l-mae" class="plot loading">Loading…</div></div>
+    <div class="panel"><div class="ptitle"><b>c</b>Drift error vs the true equation</div><div id="l-drift" class="plot loading">Loading…</div></div>
+    <div class="panel"><div class="ptitle"><b>d</b>Model B long run: training vs validation loss</div><div id="l-bloss" class="plot loading">Loading…</div></div>
+  </div></div>
+  <p class="cap"><b>Figure 3 | Long training.</b> (a) Model A: the gap between training and validation NLL opens after about epoch 150, the signature of overfitting. The diverged run is in red; its loss is clipped at 12 and ends where it became NaN. (b) Forecast error for held-out people. Dashed: the 80-epoch Model A (0.655). Dotted: gradient-boosted trees (0.665). (c) Relative MSE of the learned drift against the true drift (log scale). (d) Model B's flow-matching loss: validation rises within the first few thousand epochs while training keeps falling.</p>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var D = null;
+  function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+  var C = {};
+  function colors() { ["bg","panel","ink","muted","rule","model","truth","null","fail","pass","violet"].forEach(function (k) { C[k] = css("--" + k); }); }
+  var CFG = { responsive: true, displaylogo: false, modeBarButtonsToRemove: ["toImage","lasso2d","select2d"] };
+  function ax(o) { return Object.assign({ gridcolor: C.rule, zerolinecolor: C.rule, linecolor: C.rule, tickcolor: C.rule }, o || {}); }
+  function base(o) {
+    return Object.assign({ paper_bgcolor: C.panel, plot_bgcolor: C.panel, font: { family: "IBM Plex Sans, Arial, sans-serif", size: 12, color: C.ink },
+      margin: { l: 56, r: 12, t: 8, b: 84 }, legend: { orientation: "h", x: 0, y: -0.28, font: { size: 10 } },
+      hoverlabel: { font: { family: "IBM Plex Mono, monospace", size: 11 } } }, o || {});
+  }
+  function plot(id, data, layout) {
+    var el = document.getElementById(id);
+    if (el.classList.contains("loading")) { el.classList.remove("loading"); el.textContent = ""; }
+    Plotly.react(el, data, layout, CFG);
+  }
+  function empty(id, msg) { var el = document.getElementById(id); el.classList.add("loading"); el.textContent = msg; }
+  function col(a, k) { return a.map(function (x) { return x[k]; }); }
+  function ep1(a) { return a.map(function (x) { return Math.max(1, x.epoch); }); }
+  function ref(y, color, dash) { return { type: "line", x0: 0, x1: 1, xref: "paper", y0: y, y1: y, line: { color: color, width: 1.5, dash: dash } }; }
+  var ENC = [["a80_transformer", "transformer", function () { return C.model; }, "solid"], ["a80_hetgnn", "HetGNN", function () { return C.violet; }, "dash"]];
+
+  function summary() {
+    var rows = [["a80_transformer", "transformer"], ["a80_hetgnn", "HetGNN"], ["a_long", "transformer (200 ep)"], ["a_long_diverged", "transformer (200 ep)"], ["b_long", "transformer (200 ep)"]];
+    var h = "<table><thead><tr><th>Run</th><th>Encoder</th><th class='n'>Epochs trained</th><th class='n'>Best epoch</th><th class='n'>Best held-out forecast error</th><th class='n'>Drift error at best</th></tr></thead><tbody>";
+    rows.forEach(function (r) {
+      var R = D[r[0]]; if (!R) return;
+      var k = R.checkpoints.filter(function (c) { return c.test_mae !== null && c.test_mae !== undefined; });
+      var last = R.checkpoints.length ? R.checkpoints[R.checkpoints.length - 1].epoch : (R.history.length ? R.history[R.history.length - 1].epoch : 0);
+      var sel = (r[0] === "a80_transformer" || r[0] === "a80_hetgnn" || r[0] === "a_long_diverged") ? "val_nll_K128" : "val_mae";
+      if (r[0] === "a_long_diverged") { k = k.filter(function (c) { return c.epoch < 1855; }); last = "1,855 (then NaN)"; }
+      var best = k.reduce(function (b, c) { return (c[sel] !== null && (b === null || c[sel] < b[sel])) ? c : b; }, null);
+      h += "<tr><td>" + R.label + "</td><td>" + r[1] + "</td><td class='n'>" + (typeof last === "number" ? last.toLocaleString() : last) + "</td><td class='n'>" + (best ? best.epoch.toLocaleString() : "—") +
+        "</td><td class='n'>" + (best ? best.test_mae.toFixed(3) : "—") + "</td><td class='n'>" + (best && best.drift_rel_mse !== null ? best.drift_rel_mse.toFixed(2) : "—") + "</td></tr>";
+    });
+    document.getElementById("summary").innerHTML = h + "</tbody></table>";
+  }
+
+  function encoder() {
+    var have = ENC.filter(function (e) { return D[e[0]] && D[e[0]].encoder_history.length; });
+    if (!have.length) { ["enc-rec","enc-haz","enc-tr"].forEach(function (id) { empty(id, "Encoder runs still training."); }); return; }
+    [["enc-rec", "val_rec", "NLL"], ["enc-haz", "val_haz", "NLL"], ["enc-tr", "train_loss", "loss"]].forEach(function (p) {
+      plot(p[0], have.map(function (e) { var H = D[e[0]].encoder_history;
+        return { type: "scatter", mode: "lines", x: col(H, "epoch").map(function (x) { return x + 1; }), y: col(H, p[1]), name: e[1], line: { color: e[2](), width: 2.5, dash: e[3] } }; }),
+        base({ xaxis: ax({ title: { text: "encoder epoch" } }), yaxis: ax({ title: { text: p[2] } }) }));
+    });
+  }
+
+  function a80() {
+    var have = ENC.filter(function (e) { return D[e[0]]; });
+    if (!have.length) { ["a80-loss","a80-mae","a80-drift","a80-u"].forEach(function (id) { empty(id, "Runs still training."); }); return; }
+    var tl = [];
+    have.forEach(function (e) { var H = D[e[0]].history;
+      tl.push({ type: "scatter", mode: "lines", x: col(H, "epoch"), y: col(H, "train"), name: e[1] + " train", line: { color: C.null, width: 2, dash: e[3] } });
+      tl.push({ type: "scatter", mode: "lines", x: col(H, "epoch"), y: col(H, "val"), name: e[1] + " validation", line: { color: e[2](), width: 2.5, dash: e[3] } }); });
+    plot("a80-loss", tl, base({ xaxis: ax({ title: { text: "epoch" } }), yaxis: ax({ title: { text: "NLL per pair" } }) }));
+    var tm = [];
+    have.forEach(function (e) { var K = D[e[0]].checkpoints;
+      tm.push({ type: "scatter", mode: "lines+markers", x: col(K, "epoch"), y: col(K, "test_mae"), name: e[1] + " held-out", line: { color: e[2](), width: 3, dash: e[3] }, marker: { size: 5 } });
+      tm.push({ type: "scatter", mode: "lines", x: col(K, "epoch"), y: col(K, "val_mae"), name: e[1] + " validation", line: { color: e[2](), width: 1.2, dash: e[3] }, opacity: 0.7 }); });
+    plot("a80-mae", tm, base({ xaxis: ax({ title: { text: "epoch" } }), yaxis: ax({ title: { text: "MAE (SD units)" } }), shapes: [ref(0.665, C.truth, "dot")] }));
+    plot("a80-drift", have.map(function (e) { var K = D[e[0]].checkpoints;
+      return { type: "scatter", mode: "lines+markers", x: col(K, "epoch"), y: col(K, "drift_rel_mse"), name: e[1], line: { color: e[2](), width: 2.5, dash: e[3] }, marker: { size: 5 } }; }),
+      base({ xaxis: ax({ title: { text: "epoch" } }), yaxis: ax({ title: { text: "drift relative MSE" } }) }));
+    plot("a80-u", have.map(function (e) { var K = D[e[0]].checkpoints;
+      return { type: "scatter", mode: "lines+markers", x: col(K, "epoch"), y: col(K, "u_effect_true_nutr"), name: e[1], line: { color: e[2](), width: 2.5, dash: e[3] }, marker: { size: 5 } }; }),
+      base({ xaxis: ax({ title: { text: "epoch" } }), yaxis: ax({ title: { text: "effect on nutrient axis (/yr)" } }), shapes: [ref(-0.020, C.truth, "dash")] }));
+  }
+
+  function longRuns() {
+    var A = D.a_long, X = D.a_long_diverged, B = D.b_long;
+    var logx = function (t) { return ax({ title: { text: t || "epoch" }, type: "log" }); };
+    var tr = [];
+    if (A) { tr.push({ type: "scatter", mode: "lines", x: ep1(A.history), y: col(A.history, "train"), name: "training (long run)", line: { color: C.null, width: 2 } });
+             tr.push({ type: "scatter", mode: "lines", x: ep1(A.history), y: col(A.history, "val"), name: "validation (long run)", line: { color: C.model, width: 2 } }); }
+    if (X) { tr.push({ type: "scatter", mode: "lines", x: ep1(X.history), y: col(X.history, "val").map(function (v) { return v === null ? null : Math.min(v, 12); }), name: "validation (diverged run)", line: { color: C.fail, width: 1.5 } }); }
+    plot("l-aloss", tr, base({ xaxis: logx(), yaxis: ax({ title: { text: "NLL per pair" }, range: [2.5, 12] }) }));
+    var m = [];
+    [[A, "Model A long", C.model], [X, "Model A diverged", C.fail], [B, "Model B long", C.violet]].forEach(function (r) {
+      if (!r[0]) return; var K = r[0].checkpoints.filter(function (c) { return c.test_mae !== null && c.test_mae < 3; });
+      m.push({ type: "scatter", mode: "lines+markers", x: ep1(K), y: col(K, "test_mae"), name: r[1], line: { color: r[2], width: 2.5 }, marker: { size: 5 } }); });
+    plot("l-mae", m, base({ xaxis: logx(), yaxis: ax({ title: { text: "held-out MAE (SD units)" }, range: [0.62, 1.15] }), shapes: [ref(0.6547, C.null, "dash"), ref(0.665, C.truth, "dot")] }));
+    var dr = [];
+    [[A, "Model A long", C.model], [X, "Model A diverged", C.fail], [B, "Model B long", C.violet]].forEach(function (r) {
+      if (!r[0]) return; var K = r[0].checkpoints.filter(function (c) { return c.drift_rel_mse !== null; });
+      dr.push({ type: "scatter", mode: "lines+markers", x: ep1(K), y: col(K, "drift_rel_mse"), name: r[1], line: { color: r[2], width: 2.5 }, marker: { size: 5 } }); });
+    plot("l-drift", dr, base({ xaxis: logx(), yaxis: ax({ title: { text: "drift relative MSE" }, type: "log" }) }));
+    if (B) plot("l-bloss", [
+      { type: "scatter", mode: "lines", x: ep1(B.history), y: col(B.history, "train"), name: "training", line: { color: C.null, width: 2 } },
+      { type: "scatter", mode: "lines", x: ep1(B.history), y: col(B.history, "val"), name: "validation", line: { color: C.violet, width: 2 } }
+    ], base({ xaxis: logx(), yaxis: ax({ title: { text: "flow-matching loss" } }) }));
+  }
+
+  function draw() { colors(); summary(); encoder(); a80(); longRuns(); }
+  try { window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () { if (D) draw(); }); } catch (e) {}
+  fetch("convergence_data.json").then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (d) { D = d; draw(); })
+    .catch(function (e) { Array.prototype.forEach.call(document.querySelectorAll(".loading"), function (el) { el.textContent = "Data could not be loaded (" + e.message + ")."; }); });
+})();
+</script>
