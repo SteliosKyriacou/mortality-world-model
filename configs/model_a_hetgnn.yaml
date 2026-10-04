@@ -1,0 +1,20 @@
+# Model A-G: latent neural SDE on the heterogeneous graph (HetGNN) encoder.
+#   conda run -n mwm python scripts/train_model_a.py --config configs/model_a_hetgnn.yaml
+name: model_a_hetgnn
+description: Latent neural SDE (Model A) on a heterogeneous graph neural network encoder
+out: models/model_a_hetgnn
+cohorts: ["on", "off"]
+seeds: [0, 1, 2]
+encoder:
+  kind: hetgnn
+  d_latent: 16
+  epochs: 40            # converged by ~30 (see reports/convergence)
+  hidden: 64
+  n_layers: 2
+  pathways: cohort      # synthetic: the cohort's pathway lists; real data: MSigDB/Reactome gene sets
+model_a:
+  epochs: 80            # converged by ~20-40; longer training overfits (held-out metrics hold to ~1000)
+  lr: 0.002
+  jac_penalty: 0.0
+  select: val_nll
+  eval_every: 10

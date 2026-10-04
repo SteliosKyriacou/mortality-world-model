@@ -1,0 +1,19 @@
+# Model A-T: latent neural SDE on the masked-transformer encoder.
+#   conda run -n mwm python scripts/train_model_a.py --config configs/model_a_transformer.yaml
+name: model_a_transformer
+description: Latent neural SDE (Model A) on a masked tabular transformer encoder
+out: models/model_a_transformer
+cohorts: ["on", "off"]
+seeds: [0, 1, 2]
+encoder:
+  kind: transformer
+  d_latent: 16
+  epochs: 40            # converged by ~30 (see reports/convergence)
+  d_model: 64
+  n_layers: 2
+model_a:
+  epochs: 80            # converged by ~20-40; longer training overfits
+  lr: 0.002
+  jac_penalty: 0.0
+  select: val_nll       # checkpoint kept: best validation NLL (K=128), checked every 10 epochs
+  eval_every: 10

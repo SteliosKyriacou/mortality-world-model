@@ -1,0 +1,21 @@
+13:40:35 == data/synthetic/on seed 1 d 16 enc_epochs 40 a_epochs 80
+13:40:36 [enc] ep 0 train 2.0272 val_rec 0.8417 val_haz 0.6169
+13:40:40 [enc] ep 10 train 0.8807 val_rec 0.2224 val_haz 0.5484
+13:40:43 [enc] ep 20 train 0.7653 val_rec 0.1559 val_haz 0.5471
+13:40:46 [enc] ep 30 train 0.7339 val_rec 0.1351 val_haz 0.5473
+13:40:49 [enc] ep 39 train 0.7286 val_rec 0.1318 val_haz 0.5476
+13:40:50 affine R2 to truth: [0.908, 0.801, 0.968, 0.861, 0.77, 0.159, 0.877, 0.857] mean 0.775
+13:40:52 [A] ep 1 val128 5.1795 val_mae 0.6778 test_mae 0.6708 lmse 13.676 drift_relmse 0.839 u -0.0134
+13:41:04 [A] ep 10 val128 3.8303 val_mae 0.6634 test_mae 0.6594 lmse 12.247 drift_relmse 0.698 u -0.0171
+13:41:18 [A] ep 20 val128 3.7921 val_mae 0.6650 test_mae 0.6587 lmse 12.224 drift_relmse 0.699 u -0.0186
+13:41:32 [A] ep 30 val128 3.7892 val_mae 0.6636 test_mae 0.6603 lmse 12.289 drift_relmse 0.704 u -0.0189
+13:41:46 [A] ep 40 val128 3.7772 val_mae 0.6643 test_mae 0.6589 lmse 12.221 drift_relmse 0.705 u -0.0187
+13:41:59 [A] ep 50 val128 3.7699 val_mae 0.6635 test_mae 0.6596 lmse 12.297 drift_relmse 0.706 u -0.0194
+13:42:13 [A] ep 60 val128 3.7637 val_mae 0.6641 test_mae 0.6599 lmse 12.235 drift_relmse 0.708 u -0.0183
+13:42:27 [A] ep 70 val128 3.7664 val_mae 0.6643 test_mae 0.6586 lmse 12.247 drift_relmse 0.708 u -0.0187
+13:42:41 [A] ep 80 val128 3.7551 val_mae 0.6639 test_mae 0.6577 lmse 12.171 drift_relmse 0.708 u -0.0186
+13:42:41 best checkpoint epoch 80 (val_nll 3.7551); rollbacks 0; train 111s
+13:42:46 final: mae 0.6582 (GBM 0.6656) C 0.783 drift_relmse 0.708
+13:42:46 -- interrogating A
+13:42:47 hallmarks: inflammaging=True, dispersion=True, irreversibility=True, intervention=True, jacobian_enrichment=['OXIDATIVE_PHOSPHORYLATION', 'UNFOLDED_PROTEIN_RESPONSE', 'DNA_REPAIR'], attractors=False
+13:42:47 saved runs/encoder_cmp/on/transformer_seed1/results.json

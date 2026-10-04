@@ -1,0 +1,21 @@
+13:45:09 == data/synthetic/on seed 2 d 16 enc_epochs 40 a_epochs 80
+13:45:10 [enc] ep 0 train 2.0329 val_rec 0.8510 val_haz 0.6368
+13:45:13 [enc] ep 10 train 0.8817 val_rec 0.2185 val_haz 0.5484
+13:45:17 [enc] ep 20 train 0.7686 val_rec 0.1608 val_haz 0.5473
+13:45:20 [enc] ep 30 train 0.7327 val_rec 0.1297 val_haz 0.5489
+13:45:23 [enc] ep 39 train 0.7138 val_rec 0.1214 val_haz 0.5487
+13:45:24 affine R2 to truth: [0.894, 0.707, 0.966, 0.853, 0.774, 0.725, 0.876, 0.852] mean 0.831
+13:45:26 [A] ep 1 val128 4.8154 val_mae 0.6762 test_mae 0.6670 lmse 13.860 drift_relmse 0.839 u -0.0126
+13:45:38 [A] ep 10 val128 3.6574 val_mae 0.6591 test_mae 0.6573 lmse 12.437 drift_relmse 0.695 u -0.0180
+13:45:52 [A] ep 20 val128 3.6313 val_mae 0.6606 test_mae 0.6560 lmse 12.399 drift_relmse 0.693 u -0.0175
+13:46:06 [A] ep 30 val128 3.5958 val_mae 0.6587 test_mae 0.6580 lmse 12.498 drift_relmse 0.698 u -0.0177
+13:46:20 [A] ep 40 val128 3.5868 val_mae 0.6595 test_mae 0.6569 lmse 12.436 drift_relmse 0.704 u -0.0170
+13:46:33 [A] ep 50 val128 3.5650 val_mae 0.6592 test_mae 0.6561 lmse 12.380 drift_relmse 0.710 u -0.0177
+13:46:47 [A] ep 60 val128 3.5738 val_mae 0.6590 test_mae 0.6571 lmse 12.422 drift_relmse 0.715 u -0.0177
+13:47:01 [A] ep 70 val128 3.5532 val_mae 0.6583 test_mae 0.6558 lmse 12.384 drift_relmse 0.715 u -0.0178
+13:47:15 [A] ep 80 val128 3.5534 val_mae 0.6573 test_mae 0.6574 lmse 12.407 drift_relmse 0.716 u -0.0181
+13:47:15 best checkpoint epoch 70 (val_nll 3.5532); rollbacks 0; train 111s
+13:47:19 final: mae 0.6546 (GBM 0.6651) C 0.784 drift_relmse 0.715
+13:47:20 -- interrogating A
+13:47:21 hallmarks: inflammaging=True, dispersion=True, irreversibility=True, intervention=True, jacobian_enrichment=['MTORC1_SIGNALING', 'IGF1_INSULIN_SIGNALING'], attractors=False
+13:47:21 saved runs/encoder_cmp/on/transformer_seed2/results.json

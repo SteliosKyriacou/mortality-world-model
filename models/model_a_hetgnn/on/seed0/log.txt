@@ -1,0 +1,21 @@
+13:33:10 == data/synthetic/on seed 0 d 16 enc_epochs 40 a_epochs 80
+13:33:12 [enc] ep 0 train 2.0287 val_rec 0.8621 val_haz 0.6271
+13:33:15 [enc] ep 10 train 0.8726 val_rec 0.1958 val_haz 0.5487
+13:33:17 [enc] ep 20 train 0.7516 val_rec 0.1242 val_haz 0.5489
+13:33:20 [enc] ep 30 train 0.7247 val_rec 0.1093 val_haz 0.5477
+13:33:23 [enc] ep 39 train 0.7176 val_rec 0.1069 val_haz 0.5478
+13:33:23 affine R2 to truth: [0.929, 0.807, 0.967, 0.849, 0.757, 0.841, 0.871, 0.838] mean 0.857
+13:33:25 [A] ep 1 val128 5.5326 val_mae 0.6731 test_mae 0.6661 lmse 13.650 drift_relmse 0.839 u -0.0126
+13:33:38 [A] ep 10 val128 4.2795 val_mae 0.6640 test_mae 0.6590 lmse 12.564 drift_relmse 0.664 u -0.0198
+13:33:52 [A] ep 20 val128 4.2021 val_mae 0.6651 test_mae 0.6620 lmse 12.588 drift_relmse 0.667 u -0.0167
+13:34:05 [A] ep 30 val128 4.2083 val_mae 0.6660 test_mae 0.6641 lmse 12.610 drift_relmse 0.663 u -0.0175
+13:34:19 [A] ep 40 val128 4.2119 val_mae 0.6618 test_mae 0.6581 lmse 12.581 drift_relmse 0.662 u -0.0183
+13:34:33 [A] ep 50 val128 4.2023 val_mae 0.6623 test_mae 0.6616 lmse 12.606 drift_relmse 0.658 u -0.0178
+13:34:47 [A] ep 60 val128 4.1874 val_mae 0.6652 test_mae 0.6591 lmse 12.526 drift_relmse 0.656 u -0.0178
+13:35:01 [A] ep 70 val128 4.1967 val_mae 0.6668 test_mae 0.6597 lmse 12.562 drift_relmse 0.656 u -0.0187
+13:35:14 [A] ep 80 val128 4.1794 val_mae 0.6616 test_mae 0.6588 lmse 12.520 drift_relmse 0.655 u -0.0187
+13:35:14 best checkpoint epoch 80 (val_nll 4.1794); rollbacks 0; train 111s
+13:35:20 final: mae 0.6591 (GBM 0.6652) C 0.781 drift_relmse 0.655
+13:35:20 -- interrogating A
+13:35:21 hallmarks: inflammaging=True, dispersion=True, irreversibility=True, intervention=True, jacobian_enrichment=['OXIDATIVE_PHOSPHORYLATION', 'UNFOLDED_PROTEIN_RESPONSE', 'DNA_REPAIR', 'MTORC1_SIGNALING', 'IGF1_INSULIN_SIGNALING'], attractors=False
+13:35:21 saved runs/encoder_cmp/on/hetgnn_seed0/results.json
