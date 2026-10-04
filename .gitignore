@@ -1,0 +1,13 @@
+/data/
+runs/
+checkpoints/
+*.ckpt
+*.pt
+wandb/
+mlruns/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+outputs/
+.ipynb_checkpoints/

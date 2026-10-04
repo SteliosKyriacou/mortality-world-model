@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mwm"
+version = "0.1.0"
+description = "Mortality World Model: latent Neural SDE vs flow matching models of aging"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = ["numpy", "pandas", "pyarrow", "scipy", "scikit-learn", "torch", "torchsde",
+                "torchdiffeq", "pot", "lifelines", "matplotlib", "pyyaml"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+v2 = ["torch_geometric", "gseapy"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

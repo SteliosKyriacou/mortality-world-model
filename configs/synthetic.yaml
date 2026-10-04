@@ -1,0 +1,44 @@
+# Synthetic validation (validation ladder step 1). One command:
+#   conda run -n mwm python scripts/run_synthetic_validation.py --config configs/synthetic.yaml
+data:
+  root: data/synthetic          # <root>/on and <root>/off are generated if missing
+  n_persons: 20000
+  seed: 0
+seeds: [0, 1, 2]
+device: cuda
+encoder:
+  kind: transformer
+  d_latent: 16
+  epochs: 40
+  d_model: 64
+  n_layers: 2
+model_a:
+  hidden: 128
+  solver: native           # native Euler-Maruyama (default; torchsde "euler" is identical but leaks via ref-cycles -> gc) | euler | reversible_heun (torchsde)
+  n_steps: 32
+  epochs: 80
+  K: 32
+  batch: 512
+  lr: 0.002
+model_b:
+  hidden: 128
+  jac_penalty: 0.1         # Hutchinson ||dv/dz||_F^2 penalty; without it long B rollouts diverge
+  epochs: 300
+  batch: 512
+  lr: 0.002
+model_bprime:
+  dsm_iters: 4000
+  dsm_sigma: 0.5          # DSM noise for whitened encoder latents (~0.5 x marginal sd)
+  dsm_sigma_oracle: 0.2   # for the true latent (smaller scale)
+  diff_epochs: 30
+snapshot:
+  iters: 3000
+controls:                  # extra null/ablation models, trained for seed 0 only
+  constant_sigma: true
+  no_potential: true
+  shuffled_age: true
+oracle: true               # also train A and B' on the true latent (seed 0)
+eval:
+  rollout_samples: 32
+  survival_horizon: 15
+obs_noise: fixed            # fixed = encoder-perturbation estimate (errors-in-variables); learned = learn r
