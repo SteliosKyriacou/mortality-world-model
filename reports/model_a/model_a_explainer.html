@@ -502,7 +502,7 @@ conda run -n mwm python scripts/make_model_a_figure_data.py</pre>
   function ax(extra) { return Object.assign({ gridcolor: C.rule, zerolinecolor: C.rule, linecolor: C.rule, tickcolor: C.rule }, extra || {}); }
   function plot(id, data, layout) {
     var el = document.getElementById(id);
-    el.classList.remove("loading"); el.textContent = "";
+    if (el.classList.contains("loading")) { el.classList.remove("loading"); el.textContent = ""; }
     Plotly.react(el, data, layout, CFG);
   }
   function hazardProb(lh) { return lh.map(function (r) { return r.map(function (v) { return 1 - Math.exp(-Math.exp(v)); }); }); }
