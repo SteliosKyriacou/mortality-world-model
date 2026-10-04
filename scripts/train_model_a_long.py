@@ -44,6 +44,8 @@ ap.add_argument("--select", default="val_mae", choices=["val_mae", "val_nll"],
 ap.add_argument("--data-root", default="data/synthetic")
 ap.add_argument("--out", default="runs/long")
 ap.add_argument("--no-hallmarks", action="store_true")
+ap.add_argument("--encoder", default="transformer", choices=["transformer", "hetgnn"])
+ap.add_argument("--name", default=None, help="run directory name (default seed<k> / d<d>_seed<k>)")
 ap.add_argument("--max-hours", type=float, default=None, help="stop training after this wall time")
 ap.add_argument("--snapshot-every", type=int, default=0, help="save weights every N epochs (0 = off)")
 args = ap.parse_args()
@@ -53,7 +55,7 @@ np.random.seed(args.seed)
 rng = np.random.default_rng(args.seed)
 
 cdir = Path(args.data_root) / args.cohort
-out = Path(args.out) / args.cohort / (f"seed{args.seed}" if args.d == 16 else f"d{args.d}_seed{args.seed}")
+out = Path(args.out) / args.cohort / (args.name or (f"seed{args.seed}" if args.d == 16 else f"d{args.d}_seed{args.seed}"))
 out.mkdir(parents=True, exist_ok=True)
 log = Logger(out / "log.txt")
 tcfg, meta, tl, _ = load_truth(cdir)
@@ -62,8 +64,16 @@ nc = len(ca.clinical)
 log(f"== {cdir} seed {args.seed} d {args.d} enc_epochs {args.enc_epochs} a_epochs {args.a_epochs}")
 
 # ---------------- encoder ----------------
-bundle = train_encoder(ca, d_latent=args.d, kind="transformer", epochs=args.enc_epochs, seed=args.seed,
-                       device=dev, log=log, d_model=64, n_layers=2)
+if args.encoder == "hetgnn":
+    # gene -> pathway membership as omics column indices (synthetic: the cohort's pathway lists;
+    # real data: MSigDB/Reactome sets). NB on synthetic data these are the planted pathways.
+    pos = {g: i for i, g in enumerate(ca.omics)}
+    pw = [[pos[g] for g in genes if g in pos] for genes in meta["pathways"].values()]
+    enc_kw = dict(hidden=64, n_layers=2, pathways=pw)
+else:
+    enc_kw = dict(d_model=64, n_layers=2)
+bundle = train_encoder(ca, d_latent=args.d, kind=args.encoder, epochs=args.enc_epochs, seed=args.seed,
+                       device=dev, log=log, **enc_kw)
 lat = export_latents(bundle, ca, out, dev)
 zc = [c for c in lat.columns if c.startswith("z_")]
 obs_var = json.loads((out / "encoder_meta.json").read_text())["latent_obs_noise_var"]
