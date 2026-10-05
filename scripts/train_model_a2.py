@@ -35,13 +35,15 @@ ap.add_argument("--encoder-from", default=None)
 ap.add_argument("--out", default="runs/momentum")
 ap.add_argument("--name", default=None)
 ap.add_argument("--no-hallmarks", action="store_true")
+ap.add_argument("--oracle", action="store_true",
+                help="train on the TRUE hidden states (no encoder, tiny observation noise): can the model learn momentum at all?")
 args = ap.parse_args()
 dev = "cuda"
 torch.manual_seed(args.seed)
 np.random.seed(args.seed)
 rng = np.random.default_rng(args.seed)
 cdir = Path(args.data_root) / args.cohort
-out = Path(args.out) / args.cohort / (args.name or f"a2_seed{args.seed}")
+out = Path(args.out) / args.cohort / (args.name or (f"a2_oracle_seed{args.seed}" if args.oracle else f"a2_seed{args.seed}"))
 out.mkdir(parents=True, exist_ok=True)
 log = Logger(out / "log.txt")
 tcfg, meta, tl, _ = load_truth(cdir)
@@ -50,7 +52,18 @@ nc = len(ca.clinical)
 log(f"== {cdir} seed {args.seed} momentum={tcfg.momentum} null={tcfg.momentum_null}")
 
 # ---------------- encoder (trained here or reused) ----------------
-if args.encoder_from:
+if args.oracle:
+    vis = pd.DataFrame({"person_id": ca.visits.person_id, "visit_age": ca.visits.visit_age, "split": ca.split, "u": ca.u[:, 0]})
+    vis["visit_age"] = vis.visit_age.round(3)
+    tt = tl.copy()
+    tt["visit_age"] = tt.visit_age.round(3)
+    lat = vis.merge(tt[["person_id", "visit_age"] + [f"ztrue_{k}" for k in range(8)]], on=["person_id", "visit_age"], how="inner")
+    lat = lat.rename(columns={f"ztrue_{k}": f"z_{k}" for k in range(8)}).sort_values(["person_id", "visit_age"]).reset_index(drop=True)
+    (out / "encoder_meta.json").write_text(json.dumps({"latent_obs_noise_var": [1e-4] * 8, "oracle": True}))
+    lat.to_parquet(out / "latents.parquet", index=False)
+    bundle = None
+    log(f"ORACLE: training on true hidden states ({len(lat)} visits)")
+elif args.encoder_from:
     import shutil
     src = Path(args.encoder_from)
     for f in ("encoder.pt", "encoder_meta.json", "latents.parquet"):
@@ -64,7 +77,7 @@ else:
 zc = [c for c in lat.columns if c.startswith("z_")]
 d = len(zc)
 obs_var = json.loads((out / "encoder_meta.json").read_text())["latent_obs_noise_var"]
-sigma_x = bundle.feature_sigma.detach().cpu().numpy()
+sigma_x = bundle.feature_sigma.detach().cpu().numpy() if bundle is not None else None
 lat = lat.reset_index(drop=True)
 assert (lat.sort_values(["person_id", "visit_age"]).index.to_numpy() == np.arange(len(lat))).all()
 Z, A, U = lat[zc].to_numpy(np.float32), lat.visit_age.to_numpy(np.float32), lat["u"].to_numpy(np.float32)
@@ -163,7 +176,11 @@ rate2_obs = (probe(Z[i3]) - probe(Z[i2])) / (A[i3] - A[i2])
 res["momentum"]["data_corr_rate1_rate2"] = float(np.corrcoef(rate1, rate2_obs)[0, 1])
 for name, model, hist_ in (("A2_with_history", m2, True), ("A2_no_history", m2, False), ("A_first_order", m1, False)):
     S = forecast(model, hist_)
-    fc = forecast_eval(name, S, p3, bundle, ca.Xs, nc, sigma_x, np.random.default_rng(0))
+    if bundle is not None:
+        fc = forecast_eval(name, S, p3, bundle, ca.Xs, nc, sigma_x, np.random.default_rng(0))
+    else:
+        fc = {"mae": float("nan"), "crps": float("nan"), "cov90": float("nan"),
+              "latent_mse": float(((S.mean(0) - Z[i3]) ** 2).sum(-1).mean())}
     var = S.var(0) + np.asarray(obs_var)
     nll = float((0.5 * (Z[i3] - S.mean(0)) ** 2 / var + 0.5 * np.log(var)).sum(-1).mean())
     rate2_pred = (probe(S.mean(0)) - probe(Z[i2])) / (A[i3] - A[i2])
@@ -195,10 +212,16 @@ log("momentum: " + json.dumps({k: (round(v, 3) if isinstance(v, float) else v) f
                                if not isinstance(v, dict)}))
 
 # ---------------- survival + hallmarks (overdamped view of A2) ----------------
-surv, cox = survival_eval({"A2": m2, "A": m1}, bundle, ca, lat, zc, {"eval": {"survival_horizon": 15, "rollout_samples": 32}},
-                          dev, None, rng)
-res["survival"] = surv
-if not args.no_hallmarks:
+cox = None
+if bundle is not None:
+    try:
+        surv, cox = survival_eval({"A2": m2, "A": m1}, bundle, ca, lat, zc,
+                                  {"eval": {"survival_horizon": 15, "rollout_samples": 32}}, dev, None, rng)
+        res["survival"] = surv
+    except ValueError as e:   # e.g. NaN risk scores if long A2 rollouts diverge
+        log(f"survival evaluation failed: {e}")
+        res["survival_error"] = str(e)
+if not args.no_hallmarks and bundle is not None and cox is not None:
     hm, _ = run_hallmarks({"A2": m2, "A": m1}, bundle, ca, lat, zc, meta, cox, dev, log)
     res["hallmarks"] = hm
 (out / "results.json").write_text(json.dumps(jsonable(res), indent=1))
