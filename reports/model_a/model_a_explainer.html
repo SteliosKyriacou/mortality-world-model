@@ -160,6 +160,7 @@ ol.refs li:target { background: color-mix(in srgb, var(--model) 14%, transparent
   </div>
   <ol class="toc">
     <li><a href="#simulator">Try it: simulate a person's future</a></li>
+    <li><a href="#population">Population flow: the cohort as a fluid</a></li>
     <li><a href="#models">The two models and where they stand</a></li>
     <li><a href="#idea">The idea in one picture</a></li>
     <li><a href="#world">The synthetic worlds</a></li>
@@ -226,6 +227,51 @@ ol.refs li:target { background: color-mix(in srgb, var(--model) 14%, transparent
     <div style="margin-top:10px"><div class="ptitle" style="padding-left:0"><b>d</b> Treatment effect for this person</div><div id="sim-sum" class="tbl-wrap"></div></div>
   </div>
   <figcaption><b>Simulator.</b> (a) The learned drift on a 2D slice of the 16-dimensional latent space: the arrow of aging (§4) against the latent direction that best predicts the true nutrient or inflammation axis. The surface is the least-squares (Helmholtz) potential of the in-plane drift<sup><a href="#ref-14">14</a></sup>, coloured by the death-risk head. Grey: untreated mean path; teal: treated mean path; thin lines: 8 individual treated futures. (b) Median and 10–90% band of the decoded marker: untreated (grey), treated (teal), true equation (dashed, ochre untreated, dark treated). Dots are the person's actual measured visits; shaded spans are the treatment windows. Log-scale markers (CRP, IL-6, glucose…) show the median. (c) Survival from the first visit: model (solid) and true equation (dashed); the marker shows what actually happened to this person. (d, below the panels) Years alive between the first visit and 90 (restricted mean survival time<sup><a href="#ref-28">28</a></sup>) and marker differences, model against truth.</figcaption>
+</figure>
+
+<!-- ============================================================ population -->
+<section class="col" id="population">
+<h2>Population flow: the cohort as a fluid</h2>
+<p>The simulator above follows one person. Here a whole cohort moves at once: the 13,146 held-out people who entered the 500k world aged 40–45. Each is a particle that follows Model A. Each carries a survival weight exp(−∫λ(<i>z</i>) d<i>a</i>) that drains with the death-risk head. By the Feynman–Kac formula, this weighted particle cloud is a Monte Carlo solution of the Fokker–Planck equation with mortality as a sink:</p>
+<div class="eq"><math display="block"><mrow><mfrac><mrow><mo>∂</mo><mi>p</mi></mrow><mrow><mo>∂</mo><mi>a</mi></mrow></mfrac><mo>=</mo><munder><munder><mrow><mo>−</mo><mo>∇</mo><mo>·</mo><mo>(</mo><mi mathvariant="bold-italic">f</mi><mi>p</mi><mo>)</mo></mrow><mo>⏟</mo></munder><mtext>drift</mtext></munder><mo>+</mo><munder><munder><mrow><mfrac><mn>1</mn><mn>2</mn></mfrac><mo>∇</mo><mo>∇</mo><mo>:</mo><mo>(</mo><mi mathvariant="bold">Σ</mi><msup><mi mathvariant="bold">Σ</mi><mo>⊤</mo></msup><mi>p</mi><mo>)</mo></mrow><mo>⏟</mo></munder><mtext>noise</mtext></munder><mo>−</mo><munder><munder><mrow><mi>λ</mi><mo>(</mo><mi mathvariant="bold-italic">z</mi><mo>)</mo><mi>p</mi></mrow><mo>⏟</mo></munder><mtext>mortality sink</mtext></munder></mrow></math></div>
+<p>A grid solver is impossible in 16 dimensions, so particles are the faithful method. The same equation, with mortality as a killing term, goes back to Woodbury and Manton's random-walk model of aging<sup><a href="#ref-36">36</a></sup> and Yashin's stochastic process model<sup><a href="#ref-37">37</a></sup>. Here the drift, noise and sink are learned. The same cohort is run through the true equation from each person's true state. Observed survival (Kaplan–Meier with delayed entry<sup><a href="#ref-26">26</a></sup>) and observed marker distributions come from the held-out data.</p>
+<p><b>What it shows.</b> The true equation, run the same way, reproduces observed survival exactly (97.3% against 97.3% alive at 55; 94.5% against 94.6% at 60). That validates the method. The model's sink is far too strong: between 45 and 60 it removes 15% of the cohort where 5.4% actually die, about three times too much. At the population level the survival miscalibration is larger than the per-person view suggested. Its marker distributions are centred correctly in mid-life but too wide, consistent with the overstated noise. Late in life the model's median inflammation falls behind: median CRP at 80 is about 2.5 mg/L in the model against about 4 observed and in the truth. A likely cause is the over-strong sink removing high-inflammation people too early, which changes who is left alive.</p>
+</section>
+<figure id="pop">
+  <div class="fig-body">
+    <div class="controls" role="group" aria-label="Scenario"><span class="lab">Treatment</span>
+      <button type="button" class="seg pop-sc" data-s="actual" aria-pressed="true">as it happened (30% from first visit)</button>
+      <button type="button" class="seg pop-sc" data-s="none" aria-pressed="false">nobody</button>
+      <button type="button" class="seg pop-sc" data-s="all" aria-pressed="false">everyone, from first visit</button>
+      <button type="button" class="seg pop-sc" data-s="from55" aria-pressed="false">everyone from 55</button>
+      <button type="button" class="seg pop-sc" data-s="from65" aria-pressed="false">everyone from 65</button>
+    </div>
+    <div class="controls">
+      <span class="lab">Plane</span>
+      <button type="button" class="seg pop-pl" data-pl="nutrient" aria-pressed="true">nutrient</button>
+      <button type="button" class="seg pop-pl" data-pl="inflammation" aria-pressed="false">inflammation</button>
+      <label class="lab" for="pop-age" style="margin-left:10px">Age</label>
+      <input type="range" id="pop-age" min="0" max="25" step="1" value="0" style="width:min(260px,50vw)">
+      <span id="pop-age-lab" class="num" style="min-width:3ch"></span>
+      <button type="button" class="seg" id="pop-play">Play</button>
+      <span id="pop-status" class="lab"></span>
+    </div>
+    <div class="panels">
+      <div class="panel"><span class="pl">a</span><div class="ptitle">Where the living cohort is</div><div id="pop-dens" class="plot loading">Loading…</div></div>
+      <div class="panel"><span class="pl">b</span><div class="ptitle">Where people die (mortality sink)</div><div id="pop-flux" class="plot loading">Loading…</div></div>
+      <div class="panel"><span class="pl">c</span><div class="ptitle">Fraction alive since age 45</div><div id="pop-surv" class="plot loading">Loading…</div></div>
+      <div class="panel"><span class="pl">d</span><div class="ptitle">Marker distribution among the living</div>
+        <div class="controls" style="margin:2px 0 4px 22px" id="pop-mk"></div><div id="pop-mark" class="plot loading">Loading…</div></div>
+    </div>
+  </div>
+  <figcaption><b>Population flow</b> (500k transformer version, age-aware, one seed).
+    <ul>
+      <li><b>(a)</b> Density of the surviving cohort on the landscape plane: mass per cell as a share of the starting cohort, on a fixed colour scale, so you can watch it drain. Contour lines show the landscape U; the white line is the cohort's mean path up to the selected age.</li>
+      <li><b>(b)</b> Mortality flux: where in the state space the cohort is dying, as deaths per year per cell.</li>
+      <li><b>(c)</b> Fraction alive, normalised to 1 at age 45: model (teal), true equation (dashed) and observed Kaplan–Meier (red), which ends where follow-up ends (about 61). The grey line is the model with nobody treated, for reference.</li>
+      <li><b>(d)</b> Median and 10–90% range of a marker among the living, with measurement noise added so all three are comparable with real visits: model (teal), true equation (dashed) and observed held-out visits within ±1 year of each age (red dots).</li>
+    </ul>
+    <p>Treatment scenarios other than "as it happened" are counterfactual. The real world's treatment was randomised and started at the first visit.</p></figcaption>
 </figure>
 
 <!-- ============================================================ models -->
@@ -775,6 +821,8 @@ ol.refs li:target { background: color-mix(in srgb, var(--model) 14%, transparent
   <li id="ref-33">Song Y, Sohl-Dickstein J, Kingma DP, Kumar A, Ermon S, Poole B. Score-based generative modeling through stochastic differential equations. <i>ICLR</i> 2021. arXiv:2011.13456.</li>
   <li id="ref-34">Friedman JH. Greedy function approximation: a gradient boosting machine. <i>Ann Stat</i> 2001;29:1189–1232.</li>
   <li id="ref-35">Cortes C, Vapnik V. Support-vector networks. <i>Mach Learn</i> 1995;20:273–297.</li>
+  <li id="ref-36">Woodbury MA, Manton KG. A random-walk model of human mortality and aging. <i>Theor Popul Biol</i> 1977;11:37–48.</li>
+  <li id="ref-37">Yashin AI, Arbeev KG, Akushevich I, Kulminski A, Akushevich L, Ukraintseva SV. Stochastic model for analysis of longitudinal data on aging and mortality. <i>Math Biosci</i> 2007;208:538–551. doi:10.1016/j.mbs.2006.11.006.</li>
 </ol>
 <p class="empty">Software: PyTorch, torchsde, torchdiffeq, PyTorch Geometric, scikit-learn, lifelines/scikit-survival, Plotly.js. Model B (flow matching<sup><a href="#ref-32">32</a></sup>, with a score-based correction<sup><a href="#ref-33">33</a></sup>) was the comparison model and is described in <code>reports/synthetic_validation.md</code>.</p>
 </section>
@@ -1454,5 +1502,94 @@ node reports/model_a/webapp/test_engine.js</pre>
       h += "<tr><td>" + m.label + "</td><td>" + (m.encoder === "hetgnn" ? "HetGNN" : "transformer") + "</td><td class='n'>" + m.n_people_cohort.toLocaleString() + "</td><td class='n'>" + ta.a_epochs + " (" + s.best_epoch + ")</td><td class='n'>" + fmt(s.forecast_mae, 3) + "</td><td class='n'>" + fmt(s.gbm_mae, 3) + "</td><td class='n'>" + fmt(s.c_index, 3) + "</td><td class='n'>" + fmt(s.cox_c_index, 3) + "</td><td class='n'>" + fmt(s.drift_rel_mse, 2) + "</td><td>" + found.length + "/6: " + found.join(", ") + "</td></tr>"; });
     el.innerHTML = h + "</tbody></table>";
   }
+})();
+</script>
+
+<script>
+/* ---------------- population flow (Fokker–Planck with mortality sink) ---------------- */
+(function () {
+  "use strict";
+  var KEY = "transformer_500k", P = null, W = null, S = { sc: "actual", pl: "nutrient", i: 0, mk: "hba1c" }, timer = null, C = {};
+  var NAMES = { hba1c: "HbA1c (mmol/mol)", glucose: "Glucose (mmol/L)", crp: "CRP (mg/L)", il6: "IL-6 (pg/mL)", sbp: "Systolic BP (mmHg)",
+    egfr: "eGFR (mL/min/1.73 m²)", ldl: "LDL (mmol/L)", grip: "Grip (kg)", walk_speed: "Walk speed (m/s)", frailty_index: "Frailty index" };
+  var LOGM = { glucose: 1, crp: 1, il6: 1 };
+  var $ = function (id) { return document.getElementById(id); };
+  function colors() { ["panel", "ink", "muted", "rule", "model", "truth", "null", "fail"].forEach(function (k) { C[k] = getComputedStyle(document.documentElement).getPropertyValue("--" + k).trim(); }); }
+  var CFG = { responsive: true, displaylogo: false, modeBarButtonsToRemove: ["toImage", "lasso2d", "select2d"] };
+  function ax(o) { return Object.assign({ gridcolor: C.rule, zerolinecolor: C.rule, linecolor: C.rule, tickcolor: C.rule }, o || {}); }
+  function base(o) { return Object.assign({ paper_bgcolor: C.panel, plot_bgcolor: C.panel, font: { family: "IBM Plex Sans, Arial, sans-serif", size: 12, color: C.ink }, margin: { l: 56, r: 12, t: 8, b: 80 }, legend: { orientation: "h", x: 0, y: -0.25, font: { size: 10 } }, hoverlabel: { font: { family: "IBM Plex Mono, monospace", size: 11 } } }, o || {}); }
+  function plot(id, data, layout) { var el = $(id); if (el.classList.contains("loading")) { el.classList.remove("loading"); el.textContent = ""; } Plotly.react(el, data, layout, CFG); }
+  function centers(e) { var c = []; for (var i = 0; i < e.length - 1; i++) c.push(0.5 * (e[i] + e[i + 1])); return c; }
+  function tr(M) { return M[0].map(function (_, j) { return M.map(function (r) { return r[j]; }); }); }
+  function age() { return P.density_ages[S.i]; }
+
+  function heat(id, field, title, scale, fmt) {
+    var sc = P.scenarios[S.sc], ed = P.edges[S.pl], pl = W.planes[S.pl], G = sc[field][S.pl][S.i];
+    var zmax = 0; sc[field][S.pl].forEach(function (g) { g.forEach(function (r) { r.forEach(function (v) { if (v > zmax) zmax = v; }); }); });
+    var traces = [{ type: "heatmap", x: centers(ed[0]), y: centers(ed[1]), z: tr(G).map(function (r) { return r.map(function (v) { return v / 1e6; }); }),
+      zmin: 0, zmax: zmax / 1e6, colorscale: scale, colorbar: { title: { text: title, font: { size: 10 } }, thickness: 10, len: 0.8, tickformat: fmt || ".1%", tickfont: { size: 9 } },
+      hovertemplate: "x %{x:.2f}<br>y %{y:.2f}<br>%{z:.3%}<extra></extra>" },
+      { type: "contour", x: pl.x, y: pl.y, z: tr(pl.U), showscale: false, contours: { coloring: "none", showlabels: false }, line: { color: "rgba(255,255,255,0.45)", width: 1 }, ncontours: 18, hoverinfo: "skip" }];
+    var mp = sc.mean[S.pl].slice(0, S.i + 1);
+    traces.push({ type: "scatter", mode: "lines+markers", x: mp.map(function (q) { return q[0]; }), y: mp.map(function (q) { return q[1]; }), line: { color: "#ffffff", width: 2 }, marker: { size: 4, color: "#ffffff" }, hoverinfo: "skip", showlegend: false });
+    plot(id, traces, base({ margin: { l: 50, r: 10, t: 8, b: 44 }, showlegend: false,
+      xaxis: ax({ title: { text: "arrow of aging →" }, range: [ed[0][0], ed[0][ed[0].length - 1]] }), yaxis: ax({ title: { text: S.pl + " direction" }, range: [ed[1][0], ed[1][ed[1].length - 1]] }) }));
+  }
+  function survival() {
+    var sc = P.scenarios[S.sc], A = P.ages, m = sc.model.alive, t = sc.truth.alive, n0 = P.scenarios.none.model.alive;
+    var norm = function (v) { return v.map(function (x) { return x / v[0]; }); };
+    var tr_ = [
+      { type: "scatter", x: A, y: norm(n0), mode: "lines", line: { color: C.null, width: 1.5 }, name: "model, nobody treated" },
+      { type: "scatter", x: A, y: norm(m), mode: "lines", line: { color: C.model, width: 3 }, name: "model" },
+      { type: "scatter", x: A, y: norm(t), mode: "lines", line: { color: C.truth, width: 2.5, dash: "dash" }, name: "true equation" }];
+    if (S.sc === "actual") tr_.push({ type: "scatter", x: P.observed_km.map(function (q) { return q[0]; }), y: P.observed_km.map(function (q) { return q[1]; }), mode: "lines", line: { color: C.fail, width: 2.5, shape: "hv" }, name: "observed (Kaplan–Meier)" });
+    plot("pop-surv", tr_, base({ xaxis: ax({ title: { text: "age" } }), yaxis: ax({ title: { text: "fraction alive (1 at 45)" }, tickformat: ".0%", range: [0, 1.02] }),
+      shapes: [{ type: "line", x0: age(), x1: age(), y0: 0, y1: 1, yref: "paper", line: { color: C.muted, width: 1, dash: "dot" } }] }));
+  }
+  function markers() {
+    var sc = P.scenarios[S.sc], A = P.ages, mq = sc.model.markers[S.mk], tq = sc.truth.markers[S.mk], oq = P.observed_markers[S.mk];
+    var col = function (q, k) { return q.map(function (r) { return r ? r[k] : null; }); };
+    var t_ = [{ type: "scatter", x: A, y: col(mq, 4), mode: "lines", line: { width: 0 }, hoverinfo: "skip", showlegend: false },
+      { type: "scatter", x: A, y: col(mq, 0), mode: "lines", line: { width: 0 }, fill: "tonexty", fillcolor: "rgba(13,111,124,0.16)", name: "model 10–90%", hoverinfo: "skip" },
+      { type: "scatter", x: A, y: col(mq, 2), mode: "lines", line: { color: C.model, width: 3 }, name: "model median" },
+      { type: "scatter", x: A, y: col(tq, 2), mode: "lines", line: { color: C.truth, width: 2, dash: "dash" }, name: "true equation median" },
+      { type: "scatter", x: A, y: col(tq, 0), mode: "lines", line: { color: C.truth, width: 1, dash: "dot" }, name: "true 10% / 90%" },
+      { type: "scatter", x: A, y: col(tq, 4), mode: "lines", line: { color: C.truth, width: 1, dash: "dot" }, showlegend: false }];
+    if (S.sc === "actual") {
+      t_.push({ type: "scatter", x: A, y: col(oq, 2), mode: "markers", marker: { color: C.fail, size: 6 }, name: "observed median" });
+      t_.push({ type: "scatter", x: A, y: col(oq, 0), mode: "markers", marker: { color: C.fail, size: 4, symbol: "triangle-up-open" }, name: "observed 10% / 90%" });
+      t_.push({ type: "scatter", x: A, y: col(oq, 4), mode: "markers", marker: { color: C.fail, size: 4, symbol: "triangle-down-open" }, showlegend: false });
+    }
+    plot("pop-mark", t_, base({ xaxis: ax({ title: { text: "age" } }), yaxis: ax({ title: { text: NAMES[S.mk] + (LOGM[S.mk] ? ", log scale" : "") }, type: LOGM[S.mk] ? "log" : "linear" }), margin: { l: 60, r: 10, t: 8, b: 96 }, legend: { orientation: "h", x: 0, y: -0.3, font: { size: 10 } },
+      shapes: [{ type: "line", x0: age(), x1: age(), y0: 0, y1: 1, yref: "paper", line: { color: C.muted, width: 1, dash: "dot" } }] }));
+  }
+  function draw() {
+    $("pop-age-lab").textContent = age().toFixed(0);
+    var sc = P.scenarios[S.sc], k = P.ages.indexOf(age());
+    $("pop-status").textContent = "alive " + (100 * sc.model.alive[k] / sc.model.alive[0]).toFixed(1) + "% (truth " + (100 * sc.truth.alive[k] / sc.truth.alive[0]).toFixed(1) + "%) · deaths " + (100 * sc.model.deaths_per_year[k] / sc.model.alive[0]).toFixed(2) + "%/yr (truth " + (100 * sc.truth.deaths_per_year[k] / sc.truth.alive[0]).toFixed(2) + "%/yr)";
+    heat("pop-dens", "density", "share of<br>cohort", [[0, C.panel], [0.15, "#1f6f78"], [0.5, "#5aa77f"], [0.8, "#d9b84a"], [1, "#e0663c"]]);
+    heat("pop-flux", "flux", "deaths<br>per year", [[0, C.panel], [0.2, "#5b3a6b"], [0.6, "#b3374a"], [1, "#f2a541"]], ".2%");
+    survival(); markers();
+  }
+  function seg(sel, attr, val) { Array.prototype.forEach.call(document.querySelectorAll(sel), function (b) { b.setAttribute("aria-pressed", b.getAttribute(attr) === val ? "true" : "false"); }); }
+  function wire() {
+    Array.prototype.forEach.call(document.querySelectorAll(".pop-sc"), function (b) { b.addEventListener("click", function () { S.sc = b.dataset.s; seg(".pop-sc", "data-s", S.sc); draw(); }); });
+    Array.prototype.forEach.call(document.querySelectorAll(".pop-pl"), function (b) { b.addEventListener("click", function () { S.pl = b.dataset.pl; seg(".pop-pl", "data-pl", S.pl); draw(); }); });
+    $("pop-age").max = String(P.density_ages.length - 1);
+    $("pop-age").addEventListener("input", function () { S.i = +this.value; draw(); });
+    $("pop-play").addEventListener("click", function () {
+      if (timer) { clearInterval(timer); timer = null; this.textContent = "Play"; return; }
+      var btn = this; btn.textContent = "Pause"; if (S.i >= P.density_ages.length - 1) S.i = 0;
+      timer = setInterval(function () { S.i++; $("pop-age").value = S.i; draw(); if (S.i >= P.density_ages.length - 1) { clearInterval(timer); timer = null; btn.textContent = "Play"; } }, 450);
+    });
+    $("pop-mk").innerHTML = P.markers.map(function (f) { return "<button type='button' class='seg pop-m' data-f='" + f + "' aria-pressed='" + (f === S.mk) + "'>" + NAMES[f].split(" (")[0] + "</button>"; }).join("");
+    Array.prototype.forEach.call(document.querySelectorAll(".pop-m"), function (b) { b.addEventListener("click", function () { S.mk = b.dataset.f; seg(".pop-m", "data-f", S.mk); markers(); }); });
+    try { window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () { colors(); draw(); }); } catch (e) {}
+  }
+  colors();
+  Promise.all([fetch("population/" + KEY + ".json").then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }),
+               fetch("models/" + KEY + ".json").then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })])
+    .then(function (x) { P = x[0]; W = x[1]; wire(); draw(); })
+    .catch(function (e) { ["pop-dens", "pop-flux", "pop-surv", "pop-mark"].forEach(function (id) { $(id).textContent = "Population data could not be loaded (" + e.message + ")."; }); });
 })();
 </script>
