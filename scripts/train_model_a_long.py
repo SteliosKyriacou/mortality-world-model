@@ -46,6 +46,8 @@ ap.add_argument("--rate-penalty", type=float, default=0.0,
                 help="weight of the hinge penalty on directional rates beyond --rate-cap")
 ap.add_argument("--ke-penalty", type=float, default=0.0,
                 help="kinetic-energy penalty: weight on mean ||drift||^2 at observed states")
+ap.add_argument("--sigma-penalty", type=float, default=1e-3,
+                help="weight on mean ||Sigma||^2 (makes 'explain it with noise' more expensive)")
 ap.add_argument("--encoder-from", default=None,
                 help="reuse the frozen encoder + latents of an existing run directory")
 ap.add_argument("--select", default="val_mae", choices=["val_mae", "val_nll"],
@@ -158,7 +160,7 @@ for ep in range(args.a_epochs):
     for s in range(0, n, 512):
         b = perm[s:s + 512]
         batch = tuple(x[b] for x in tr)
-        loss, _ = m.loss(batch, K=32)
+        loss, _ = m.loss(batch, K=32, sigma_penalty=args.sigma_penalty)
         if args.jac_penalty > 0 or args.rate_penalty > 0 or args.ke_penalty > 0:
             zz = batch[0].clone().requires_grad_(True)
             f = m.drift(zz, batch[2], batch[4])
