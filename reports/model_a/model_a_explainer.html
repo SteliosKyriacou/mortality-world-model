@@ -4,6 +4,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.32.0/plotly.min.js"></script>
+<script src="sim_engine.js"></script>
 <style>
 /* Layout: single reading column (journal article) with figures that break out wider; panel letters + sans captions. */
 :root {
@@ -107,6 +108,19 @@ dl.def dd { margin: 0; min-width: 0; }
 .toc a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--rule); }
 .milestones td.c { font-family: var(--font-body); font-size: .92rem; min-width: 16ch; }
 footer { max-width: var(--measure); margin: 4rem auto 0; font-family: var(--font-ui); font-size: .82rem; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 1rem; }
+.sel { font: inherit; font-family: var(--font-ui); font-size: .85rem; border: 1px solid var(--rule); background: var(--bg); color: var(--ink); padding: 5px 8px; border-radius: 3px; max-width: 100%; }
+.chk { font-family: var(--font-ui); font-size: .85rem; color: var(--ink); display: inline-flex; gap: 5px; align-items: center; }
+.mini { display: inline-flex; gap: 4px; flex-wrap: wrap; margin-left: 8px; vertical-align: middle; }
+.mini .seg { padding: 2px 7px; font-size: .76rem; }
+.warnline { font-family: var(--font-ui); font-size: .84rem; color: var(--truth); margin: 0 0 8px; }
+.winrow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-family: var(--font-ui); font-size: .85rem; margin-bottom: 4px; }
+.winrow input[type=number] { width: 5.2em; font: inherit; border: 1px solid var(--rule); background: var(--bg); color: var(--ink); padding: 3px 6px; border-radius: 3px; }
+.winrow .x { border: 1px solid var(--rule); background: var(--bg); color: var(--fail); border-radius: 3px; cursor: pointer; font: inherit; padding: 2px 8px; }
+.empty { font-family: var(--font-ui); font-size: .85rem; color: var(--muted); }
+sup a { text-decoration: none; font-family: var(--font-ui); font-size: .72em; }
+ol.refs { font-family: var(--font-ui); font-size: .84rem; line-height: 1.5; padding-left: 1.6rem; }
+ol.refs li { margin-bottom: .35rem; }
+ol.refs li:target { background: color-mix(in srgb, var(--model) 14%, transparent); }
 @media (max-width: 560px) {
   body { font-size: 1rem; }
   .plot.tall { height: 420px; }
@@ -117,30 +131,125 @@ footer { max-width: var(--measure); margin: 4rem auto 0; font-family: var(--font
 
 <div class="wrap">
 <header class="masthead">
-  <p class="kicker">Mortality world model · synthetic validation · Model A</p>
+  <p class="kicker">Mortality world model · Model A · status 5 October 2026</p>
   <h1>A latent stochastic differential equation that learns how people age</h1>
-  <p class="byline">Technical report on the winning model from the 3 October 2026 synthetic validation run. All numbers come from <code>runs/synthetic/{on,off}/seed{0,1,2}/results.json</code>. All figures are drawn from the saved model weights by <code>scripts/make_model_a_figure_data.py</code>.</p>
+  <p class="byline">Open-source research code: <code>github.com/SteliosKyriacou/mortality-world-model</code>. Every model, cohort and figure on this page is synthetic: the people are simulated from an aging equation we wrote, so the true answer is known. No real patient data have been used yet.</p>
   <div class="abstract">
-    <p><strong>Abstract</strong></p>
-    <p>We model a person's health as a point moving through a 16-dimensional learned space. Its motion follows a stochastic differential equation: a learned deterministic drift plus age-dependent random noise. A masked transformer turns each clinic visit, with whatever measurements it has, into that point. The equation then carries the point forward to any future age, and a decoder turns it back into blood pressure, CRP, HbA1c, grip strength and a death hazard.</p>
-    <p>We tested the model on a simulated cohort of 20,000 people whose true aging equation we wrote ourselves. That equation has six hallmarks of aging planted in it, and a matched null cohort has none of them. When trained directly on the true coordinates, the model recovers the planted drift to within 9–17% error on 6 of 8 axes. It recovers the noise to within 1–11% on 7 of 8 axes, and the intervention effect exactly (−0.020 vs −0.020 latent units per year). When trained through its own learned encoder, it forecasts held-out people better than every baseline we tried. It detects 5 of the 6 planted hallmarks without a single false positive on the null cohort, across 3 training seeds. It misses the frailty basin, a two-valley structure in the landscape. Its death-risk predictions are no better than a Cox model on baseline labs. Everything here is synthetic. The results show the machinery can work; they say nothing yet about human biology.</p>
+    <p><strong>Summary</strong></p>
+    <p><b>What it is.</b> Model A describes a person's health as a point <i>z</i> moving through a 16-dimensional learned space. The point moves according to a stochastic differential equation: a learned drift (where people in your state tend to go next) plus learned, age-dependent random noise. An encoder turns a clinic visit, with whatever measurements it happens to have, into that point. A decoder turns any point back into markers such as HbA1c, CRP and blood pressure, and a separate head gives the death rate. This is the latent-ODE/SDE family of models<sup><a href="#ref-1">1</a>,<a href="#ref-2">2</a>,<a href="#ref-3">3</a></sup>, applied to aging trajectories, close in spirit to earlier dynamical models of aging<sup><a href="#ref-17">17</a>,<a href="#ref-18">18</a>,<a href="#ref-19">19</a></sup>.</p>
+    <p><b>Two versions, kept separate.</b> They share the same dynamics model and differ only in the encoder. One is a masked transformer that reads each marker as a token<sup><a href="#ref-8">8</a>,<a href="#ref-9">9</a></sup>. The other is a heterogeneous graph neural network (HetGNN) that builds a small graph of markers, genes and pathways for each visit<sup><a href="#ref-10">10</a>,<a href="#ref-11">11</a></sup>.</p>
+    <p><b>How it was tested.</b> On two simulated cohorts whose true equation contains six planted hallmarks of aging<sup><a href="#ref-16">16</a></sup>, each paired with a null cohort that contains none of them:</p>
+    <ul>
+      <li><b>20,000 people</b> with dense follow-up;</li>
+      <li><b>500,000 people</b> with UK Biobank-like follow-up<sup><a href="#ref-29">29</a></sup>.</li>
+    </ul>
+    <p><b>What it gets right:</b></p>
+    <ul>
+      <li><b>Hallmarks.</b> With 500,000 people, the transformer version detects all six planted hallmarks and none in the null cohort (one training seed each).</li>
+      <li><b>Treatment effect.</b> Its average per-person treatment effect on HbA1c is within 4% of the true effect, and it partly identifies who gains survival from treatment.</li>
+      <li><b>Forecasting at 20k.</b> It forecasts held-out people better than gradient-boosted trees.</li>
+    </ul>
+    <p><b>What it gets wrong:</b></p>
+    <ul>
+      <li><b>Survival.</b> Its absolute survival is too pessimistic, by about 12–13 points at 15 years in every version. It ranks who dies first no better than a Cox model on baseline labs.</li>
+      <li><b>Forecasting at 500k.</b> It falls slightly behind gradient-boosted trees.</li>
+      <li><b>Noise.</b> It overstates how fast noise grows with age.</li>
+      <li><b>Long training.</b> Trained for long, its drift slowly drifts away from the truth while its forecasts barely change: visits years apart cannot pin down fast dynamics.</li>
+    </ul>
+    <p>The page lets you simulate held-out people under any treatment schedule and compare the model with the true equation.</p>
   </div>
   <ol class="toc">
+    <li><a href="#simulator">Try it: simulate a person's future</a></li>
+    <li><a href="#models">The two models and where they stand</a></li>
     <li><a href="#idea">The idea in one picture</a></li>
-    <li><a href="#world">The synthetic world we tested it in</a></li>
+    <li><a href="#world">The synthetic worlds</a></li>
     <li><a href="#model">The model, exactly</a></li>
-    <li><a href="#landscape">The aging landscape it learned</a></li>
-    <li><a href="#intervention">What an intervention does</a></li>
+    <li><a href="#landscape">The aging landscape (20k validation)</a></li>
+    <li><a href="#intervention">What an intervention does (20k)</a></li>
     <li><a href="#reality">Intervention predictions vs reality</a></li>
-    <li><a href="#convergence">Training convergence</a></li>
-    <li><a href="#recovery">Does it recover the truth?</a></li>
-    <li><a href="#forecast">Forecasting real futures</a></li>
-    <li><a href="#hallmarks">Hallmark tests</a></li>
-    <li><a href="#scoreboard">Scoreboard</a></li>
+    <li><a href="#recovery">Does it recover the truth? (20k)</a></li>
+    <li><a href="#forecast">Forecasting (20k)</a></li>
+    <li><a href="#hallmarks">Hallmark tests (20k)</a></li>
+    <li><a href="#scoreboard">Scoreboard (20k)</a></li>
+    <li><a href="#ukb">At UK Biobank scale (500k)</a></li>
     <li><a href="#limits">What this does and does not show</a></li>
+    <li><a href="#refs">References</a></li>
     <li><a href="#repro">Reproduce</a></li>
   </ol>
 </header>
+
+<!-- ============================================================ simulator -->
+<section class="col" id="simulator">
+<h2>Try it: simulate a person's future</h2>
+<p>This runs the trained networks in your browser: drift, landscape, noise, decoder and death-risk head, about 120,000 weights per model. Pick a held-out person, the model never saw them in training. Then add or remove treatment windows and the model simulates their futures to age 90. It uses the same Euler–Maruyama scheme<sup><a href="#ref-5">5</a></sup> as the model's own forecasts: 4 steps per year (training used 32 steps per visit pair). The JavaScript engine reproduces the Python model to within 0.05% on every network output, and full simulations agree to within Monte Carlo noise; <code>webapp/test_engine.js</code> checks this.</p>
+<p>Because the world is synthetic, the page can also run the <b>true equation</b> from the same person's true hidden state under the same treatment schedule (dashed lines). The model starts from what its encoder made of the person's first visit; the truth starts from the exact state. Treated and untreated futures share the same random draws, so their difference is the treatment's effect alone.</p>
+<p><b>What the treatment is.</b> The model knows exactly one intervention: <i>u</i>, the synthetic nutrient-sensing treatment. In the true equation it halves the drift of the metabolic axis while it is switched on. Nothing else exists to add. In training, everyone treated was treated from their first visit onwards. Windows that start later or stop are therefore extrapolations: the true equation handles them exactly; the model has never seen one.</p>
+</section>
+
+<figure id="sim">
+  <div class="fig-body">
+    <div class="controls" role="group" aria-label="Model"><span class="lab">Model</span><span id="sim-models"></span></div>
+    <div class="controls"><label class="lab" for="sim-person">Person (held-out)</label><select id="sim-person" class="sel"></select></div>
+    <div class="controls" style="align-items:flex-start">
+      <span class="lab" style="padding-top:5px">Treatment windows</span>
+      <div style="min-width:0">
+        <div id="sim-windows"></div>
+        <div class="controls" style="margin:6px 0 0">
+          <button type="button" class="seg" id="sim-add">Add window</button>
+          <span class="lab" style="margin-left:6px">Presets</span>
+          <button type="button" class="seg sim-preset" data-p="none">None</button>
+          <button type="button" class="seg sim-preset" data-p="baseline">From first visit</button>
+          <button type="button" class="seg sim-preset" data-p="55">From 55</button>
+          <button type="button" class="seg sim-preset" data-p="65">From 65</button>
+          <button type="button" class="seg sim-preset" data-p="55-65">55 to 65 only</button>
+        </div>
+      </div>
+    </div>
+    <div class="controls">
+      <label class="lab" for="sim-k">Futures</label>
+      <select id="sim-k" class="sel"><option value="24">24</option><option value="64" selected>64</option><option value="160">160</option></select>
+      <label class="chk"><input type="checkbox" id="sim-noise" checked> random noise</label>
+      <label class="chk"><input type="checkbox" id="sim-truth" checked> true equation</label>
+      <button type="button" class="seg" id="sim-redraw">New random draw</button>
+      <span id="sim-status" class="lab" aria-live="polite"></span>
+    </div>
+    <p id="sim-warn" class="warnline" hidden></p>
+    <div class="panels">
+      <div class="panel"><span class="pl">a</span><div class="ptitle">Paths on the learned landscape</div>
+        <div class="controls" style="margin:2px 0 4px 22px"><button type="button" class="seg sim-plane" data-pl="nutrient" aria-pressed="true">nutrient plane</button><button type="button" class="seg sim-plane" data-pl="inflammation" aria-pressed="false">inflammation plane</button></div>
+        <div id="sim-land" class="plot mid loading">Loading the model…</div></div>
+      <div class="panel"><span class="pl">b</span><div class="ptitle">Marker forecast</div>
+        <div class="controls" style="margin:2px 0 4px 22px" id="sim-markers"></div>
+        <div id="sim-marker" class="plot mid loading">Loading…</div></div>
+      <div class="panel"><span class="pl">c</span><div class="ptitle">Probability of being alive</div><div id="sim-surv" class="plot loading">Loading…</div></div>
+    </div>
+    <div style="margin-top:10px"><div class="ptitle" style="padding-left:0"><b>d</b> Treatment effect for this person</div><div id="sim-sum" class="tbl-wrap"></div></div>
+  </div>
+  <figcaption><b>Simulator.</b> (a) The learned drift on a 2D slice of the 16-dimensional latent space: the arrow of aging (§4) against the latent direction that best predicts the true nutrient or inflammation axis. The surface is the least-squares (Helmholtz) potential of the in-plane drift<sup><a href="#ref-14">14</a></sup>, coloured by the death-risk head. Grey: untreated mean path; teal: treated mean path; thin lines: 8 individual treated futures. (b) Median and 10–90% band of the decoded marker: untreated (grey), treated (teal), true equation (dashed, ochre untreated, dark treated). Dots are the person's actual measured visits; shaded spans are the treatment windows. Log-scale markers (CRP, IL-6, glucose…) show the median. (c) Survival from the first visit: model (solid) and true equation (dashed); the marker shows what actually happened to this person. (d, below the panels) Years alive between the first visit and 90 (restricted mean survival time<sup><a href="#ref-28">28</a></sup>) and marker differences, model against truth.</figcaption>
+</figure>
+
+<!-- ============================================================ models -->
+<section class="col" id="models">
+<h2>The two models and where they stand</h2>
+<p>Both versions use the same Model A dynamics: 46,193 parameters, identical networks. They differ only in the encoder that turns a visit into a point <i>z</i>. Each is trained and stored separately (<code>models/model_a_transformer</code>, <code>models/model_a_hetgnn</code>). The table lists every trained version the simulator can run, with its results on held-out people of its own cohort.</p>
+</section>
+<figure id="fig-models">
+  <div class="fig-body tbl-wrap" id="models-table"><span class="loading">Loading…</span></div>
+  <figcaption><b>Table 1 | Trained versions.</b>
+    <ul>
+      <li><b>Forecast error:</b> mean absolute error predicting each held-out person's last visit from their first, in standard-deviation units, averaged over all measured markers. "Trees" is gradient-boosted trees<sup><a href="#ref-34">34</a></sup> given the same inputs.</li>
+      <li><b>Survival C:</b> Harrell's concordance<sup><a href="#ref-24">24</a></sup> from the first visit (Uno's version<sup><a href="#ref-25">25</a></sup> ranks the models the same way); "Cox C" is a Cox model<sup><a href="#ref-27">27</a></sup> on baseline markers and age.</li>
+      <li><b>Drift error:</b> relative mean squared error of the learned drift against the true drift, mapped through an affine fit from learned to true coordinates (0 = perfect, 1 = no better than zero).</li>
+      <li><b>Hallmarks:</b> tests that fired on the hallmarks-ON cohort (§7).</li>
+    </ul>
+    <p>The 20k rows are seed 0. Over 3 seeds, both 20k versions found the same four core hallmarks every time and missed the frailty basin every time; only the pathway test varied by seed. Neither fired on the null cohort in any seed. The 500k transformer is a single seed: on the 500k null cohort, trained with the same recipe, it detected none of the six hallmarks. On that null cohort its forecast error was 0.841 against 0.766 for trees.</p>
+    <p><b>Recipes:</b></p>
+    <ul>
+      <li><b>20k versions:</b> encoder 40 epochs; Model A 80 epochs at learning rate 2×10⁻³; checkpoint by validation likelihood.</li>
+      <li><b>500k version:</b> encoder 40 epochs; Model A 600 epochs at 5×10⁻⁴, cosine-annealed, Jacobian penalty 0.01; checkpoint by validation forecast error (kept: epoch 275).</li>
+    </ul>
+    <p>A 500k HetGNN version is training and will be added when it finishes.</p></figcaption>
+</figure>
 
 <!-- ============================================================ 1 -->
 <section class="col" id="idea">
@@ -194,10 +303,18 @@ footer { max-width: var(--measure); margin: 4rem auto 0; font-family: var(--font
 
 <!-- ============================================================ 2 -->
 <section class="col" id="world">
-<h2>2. The synthetic world we tested it in</h2>
+<h2>2. The synthetic worlds</h2>
 <p>On real data you never know the true equation of aging, so you cannot check whether a model found it. We therefore built a world where we do know it. 20,000 simulated people are each born with a hidden 8-dimensional state at age 30. The state evolves under an equation we wrote, simulated in steps of 0.05 years until death or the end of follow-up. People are seen at a baseline visit between ages 40 and 70, then 0–3 follow-up visits 1–8 years apart. This gives about 33,000 visits, and about 8,600 people have two or more. At each visit the hidden state produces 33 clinical markers through a fixed noisy mapping, plus a 500-gene panel for a quarter of people. Deaths follow a hazard that depends on the hidden state.</p>
 <p>The eight hidden axes each have a job. We then built two versions of the world. In <b>hallmarks-ON</b>, six hallmarks of aging are planted. In <b>hallmarks-OFF</b>, every one is switched off and replaced with a carefully matched version that lacks the hallmark. A test that fires on ON but not on OFF is detecting the hallmark, not some artefact of the pipeline.</p>
 </section>
+
+<p><b>The 500,000-person world (UK Biobank scale).</b> It has the same equation, hallmarks and null version, but a visit structure modelled on UK Biobank<sup><a href="#ref-29">29</a></sup>:</p>
+<ul>
+  <li><b>Visits:</b> a baseline visit at 40–70, then 0–3 repeat visits with probabilities 0.76 / 0.19 / 0.045 / 0.005 (none / one / two / three), spaced 3–12 years apart.</li>
+  <li><b>Follow-up:</b> 13–17 years.</li>
+  <li><b>Gene panel:</b> 11% of people, rarely repeated.</li>
+</ul>
+<p>This gives 110,616 people with two or more visits in the ON world and 116,786 in the OFF world, 13 times the 20k world's 8,600. The proportions follow public descriptions of UK Biobank: about 500k recruited, roughly 20k at the 2012–13 repeat visit, tens of thousands at imaging visits, and about 54k with Olink proteomics<sup><a href="#ref-30">30</a></sup>. They are approximations, not a reconstruction of UK Biobank. Deaths during follow-up: 21.3% (ON) and 6.2% (OFF).</p>
 
 <figure id="fig2">
   <div class="fig-body tbl-wrap">
@@ -222,9 +339,24 @@ footer { max-width: var(--measure); margin: 4rem auto 0; font-family: var(--font
 <section class="col" id="model">
 <h2>3. The model, exactly</h2>
 
-<h3>3.1 Encoder (shared, trained first, then frozen)</h3>
+<h3>3.1 The two encoders (trained first, then frozen)</h3>
+<p><b>Transformer encoder</b> (400,976 parameters, <code>src/mwm/encoders/tabular.py</code>)<sup><a href="#ref-8">8</a></sup>.</p>
 <p>Each of the 33 clinical markers becomes one token: its standardised value times a learned vector, plus a learned marker identity. A missing marker gets a learned mask token and is excluded from attention, so nothing is imputed. The gene panel, when present, is projected into 4 extra tokens. Two transformer layers (width 64, 4 heads) pool the tokens into a 16-dimensional <i>z</i>.</p>
-<p>The encoder is trained as a masked autoencoder. 30% of the observed markers are hidden, and it must reconstruct them: weight 1 for hidden entries, 0.5 for visible ones. Alongside this it trains a piecewise-exponential death hazard on <i>z</i> (weight 0.5) and a consistency term that keeps <i>z</i> stable when the gene panel is missing (weight 0.5). Reconstructing hidden markers, rather than visible ones, matters. A latent that copies its own inputs also copies their measurement noise, and the dynamics model would then mistake that noise for fast biology. After 40 epochs the latent is whitened (zero mean, unit variance per dimension on training visits) and frozen.</p>
+<p><b>HetGNN encoder</b> (157,456 parameters, <code>src/mwm/encoders/hetgnn.py</code>). It builds a small graph for each visit from the measured values only:</p>
+<ul>
+  <li><b>Nodes:</b> the visit itself; one node per measured clinical value; one per measured gene; one per pathway that has at least one measured gene.</li>
+  <li><b>Edges:</b> clinical→visit, gene→pathway (membership), gene→visit, pathway→visit, and visit→clinical.</li>
+  <li><b>Message passing:</b> two rounds, using one GraphSAGE layer per edge type<sup><a href="#ref-10">10</a></sup> (relation-specific weights as in R-GCN<sup><a href="#ref-11">11</a></sup>, implemented with PyTorch Geometric<sup><a href="#ref-12">12</a></sup>). Messages are summed across edge types, with residual updates.</li>
+  <li><b>Readout:</b> <i>z</i> is read from the visit node. A missing modality is simply an absent node.</li>
+</ul>
+<p>In the synthetic worlds, the gene→pathway membership given to the encoder is the planted pathway list. That partly hands the pathway test its answer, so for the HetGNN the null cohort is the meaningful check. On real data the lists would come from MSigDB/Reactome.</p>
+<p><b>Training, identical for both encoders.</b> Each encoder is trained as a masked autoencoder<sup><a href="#ref-9">9</a></sup>:</p>
+<ul>
+  <li><b>Masked reconstruction:</b> 30% of the observed markers are hidden and must be reconstructed, with weight 1 for hidden entries and 0.5 for visible ones.</li>
+  <li><b>Death hazard (weight 0.5):</b> a piecewise-exponential hazard on <i>z</i>, held constant over each visit interval.</li>
+  <li><b>Gene-panel consistency (weight 0.5):</b> keeps <i>z</i> stable when the gene panel is missing.</li>
+</ul>
+<p>Reconstructing hidden markers rather than visible ones matters. A latent that copies its own inputs also copies their measurement noise, which the dynamics model would then mistake for fast biology. After 40 epochs the latent is whitened (zero mean, unit variance per dimension on training visits) and frozen. Neither encoder overfits within 200 epochs; the validation reconstruction loss keeps falling.</p>
 
 <h3>Why 16 dimensions?</h3>
 <p>It was a judgment call made before training, not a tuned value; nothing in the results so far proves 16 is right. The reasoning:</p>
@@ -234,7 +366,7 @@ footer { max-width: var(--measure); margin: 4rem auto 0; font-family: var(--font
   <li><b>The extra dimensions are cheap for the SDE.</b> Model A has 46k parameters at 16 dimensions. The noise and drift networks scale with the latent size, but a 16-dimensional SDE trains in under two minutes.</li>
   <li><b>Too many dimensions hurt.</b> Every extra dimension is somewhere for encoder noise to go, and the SDE then has to explain it as diffusion. That makes the landscape harder to interpret (more rotation, less identifiable). On real data, where the true size is unknown, too much room is a real risk.</li>
 </ul>
-<p>How well it worked: a linear map from the 16 learned dimensions recovers the 8 true ones with R² 0.82 (0.85 with the longer-trained encoder). The proper answer is a sweep over 4, 8, 12, 16, 24 and 32 dimensions, comparing forecast error, recovery of the truth and hallmark detection. That sweep is scripted (<code>scripts/train_model_a_long.py --d</code>) and was paused so the GPU could run the overnight training; it is the next thing to run.</p>
+<p>How well it worked: a linear map from the 16 learned dimensions recovers the 8 true ones with mean R² 0.82–0.87, depending on the version (Table 1). A sweep over 4–32 dimensions is scripted (<code>scripts/train_model_a_long.py --d</code>) but has not been run, so 16 remains a judgment call.</p>
 
 <h3>3.2 The equation of motion</h3>
 <div class="eq">
@@ -243,10 +375,10 @@ footer { max-width: var(--measure); margin: 4rem auto 0; font-family: var(--font
 <p>Here <i>a</i> is age in years, <i>u</i> ∈ {0, 1} is the intervention flag, and <i>W</i> is Brownian motion. The drift has two networks:</p>
 <dl class="def">
   <dt>V<sub>ψ</sub></dt><dd>a scalar "landscape" over <i>z</i> (MLP 16→128→128→1, SiLU, 18,817 parameters). Its downhill direction is one part of the drift.</dd>
-  <dt>J<sub>θ</sub></dt><dd>everything else: age dependence, the intervention and rotational flow (MLP 18→128→128→16, 21,008 parameters). A small penalty (10⁻³‖J‖²) pushes as much of the drift as possible into the landscape.</dd>
+  <dt>J<sub>θ</sub></dt><dd>everything else: age dependence, the intervention and rotational flow (MLP 18→128→128→16, 21,008 parameters; input [<i>z</i>, (age − 60)/10, <i>u</i>]). A small penalty (10⁻³‖J‖²) pushes as much of the drift as possible into the landscape. The split between V and J turned out not to be identifiable (§10); only their sum is meaningful.</dd>
   <dt>Σ<sub>φ</sub></dt><dd>diagonal noise that depends on state and age (MLP 17→64→64→16, softplus output, 6,352 parameters), with a small penalty 10⁻³‖Σ‖².</dd>
 </dl>
-<p>In total Model A has 46,193 parameters. It is deliberately small: everything is in a 16-dimensional space.</p>
+<p>In total Model A has 46,193 parameters. It is deliberately small: everything is in a 16-dimensional space. The structure, a learned SDE in the latent space of an encoder, follows latent ODE/SDE models for irregularly sampled data<sup><a href="#ref-1">1</a>,<a href="#ref-2">2</a>,<a href="#ref-3">3</a>,<a href="#ref-4">4</a></sup>.</p>
 
 <h3>3.3 How it is trained</h3>
 <p>Training data are pairs of consecutive visits from the same person: (<i>z</i><sub>0</sub>, age <i>a</i><sub>0</sub>) → (<i>z</i><sub>1</sub>, age <i>a</i><sub>1</sub>), giving 9,681 training pairs, 1,275 validation pairs and 1,281 held-out test people (seed 0). For each pair the model simulates <i>K</i> = 32 futures from <i>z</i><sub>0</sub> to <i>a</i><sub>1</sub>. The interval is rescaled to <i>s</i> ∈ [0, 1] so that every pair, whatever its gap, takes 32 Euler–Maruyama steps:</p>
@@ -257,23 +389,41 @@ footer { max-width: var(--measure); margin: 4rem auto 0; font-family: var(--font
 <div class="eq">
 <math display="block"><mrow><mi>ℒ</mi><mo>=</mo><munder><mo>∑</mo><mi>d</mi></munder><mrow><mo>[</mo><mfrac><msup><mrow><mo>(</mo><msub><mi>z</mi><mrow><mn>1</mn><mi>d</mi></mrow></msub><mo>−</mo><msub><mi>μ</mi><mrow><mi>K</mi><mi>d</mi></mrow></msub><mo>)</mo></mrow><mn>2</mn></msup><mrow><mn>2</mn><mo>(</mo><msubsup><mi>s</mi><mrow><mi>K</mi><mi>d</mi></mrow><mn>2</mn></msubsup><mo>+</mo><msubsup><mi>r</mi><mi>d</mi><mn>2</mn></msubsup><mo>)</mo></mrow></mfrac><mo>+</mo><mfrac><mn>1</mn><mn>2</mn></mfrac><mi>log</mi><mo>(</mo><msubsup><mi>s</mi><mrow><mi>K</mi><mi>d</mi></mrow><mn>2</mn></msubsup><mo>+</mo><msubsup><mi>r</mi><mi>d</mi><mn>2</mn></msubsup><mo>)</mo><mo>]</mo></mrow><mo>+</mo><msup><mn>10</mn><mrow><mo>−</mo><mn>3</mn></mrow></msup><mo>‖</mo><mi mathvariant="bold-italic">J</mi><msup><mo>‖</mo><mn>2</mn></msup><mo>+</mo><msup><mn>10</mn><mrow><mo>−</mo><mn>3</mn></mrow></msup><mo>‖</mo><mi mathvariant="bold">Σ</mi><msup><mo>‖</mo><mn>2</mn></msup></mrow></math>
 </div>
-<p><b>Why <i>r</i> is fixed, not learned.</b> We estimate <i>r</i><sup>2</sup> once. We perturb 4,000 training visits 16 times by each marker's measurement noise, as estimated by the decoder, and measure how much <i>z</i> moves (0.08–0.21 per dimension, i.e. 8–21% of the latent variance). The start state is jittered by the same amount during training (errors-in-variables). When we first let the model learn <i>r</i> itself, it explained the encoder's noise as fast, large biological noise. With visits at least a year apart, the data cannot distinguish the two.</p>
-<p><b>Optimisation.</b> AdamW (learning rate 2×10⁻³, weight decay 10⁻⁵), cosine schedule, batch 512, gradient clip 5, up to 80 epochs with early stopping on validation likelihood (patience 25). Training takes 99 ± 9 s and peaks at 5.6 GB on one RTX 4070 Ti. At prediction time a 10-year path costs 40 network evaluations (4 steps per year).</p>
+<p><b>Why <i>r</i> is fixed, not learned</b> (errors-in-variables<sup><a href="#ref-13">13</a></sup>). We estimate <i>r</i><sup>2</sup> once. We perturb 4,000 training visits 16 times by each marker's measurement noise, as estimated by the decoder, and measure how much <i>z</i> moves (0.08–0.21 per dimension, i.e. 8–21% of the latent variance). The start state is jittered by the same amount during training (errors-in-variables). When we first let the model learn <i>r</i> itself, it explained the encoder's noise as fast, large biological noise. With visits at least a year apart, the data cannot distinguish the two.</p>
+<p><b>Optimisation:</b></p>
+<ul>
+  <li><b>Common to every version:</b> AdamW, weight decay 10⁻⁵, batch 512, gradient clip 5.</li>
+  <li><b>20k versions:</b> learning rate 2×10⁻³, cosine over 80 epochs, best validation likelihood kept (about 100 s and 5.6 GB on one RTX 4070 Ti).</li>
+  <li><b>500k version:</b> learning rate 5×10⁻⁴, cosine over 600 epochs. It adds a Jacobian penalty 0.01·‖∂f/∂z‖²<sub>F</sub>, estimated with Hutchinson's trick<sup><a href="#ref-6">6</a>,<a href="#ref-7">7</a></sup>, and a guard that rolls training back if the loss diverges. The checkpoint kept is the best validation forecast error (epoch 275; about 13 s per epoch).</li>
+</ul>
+<p>Forecasts use 4 Euler–Maruyama steps per year (40 network evaluations for 10 years).</p>
 
-<h3 id="convergence">3.4 Training convergence</h3>
-<p>The reported model was trained for 80 epochs (about 100 seconds). Its validation loss was still drifting down when training ended, so we started a long run on 4 October at 10:06: encoder 200 epochs, then Model A for up to 19.5 hours (about 52,000 epochs) with the learning rate annealed over the whole run. Every 500 epochs the run records the validation likelihood (128 futures per pair), held-out forecast error and drift error against the true equation. The plots below therefore show whether more training improves what we care about, not just whether the loss keeps falling. The checkpoint with the best validation likelihood is kept, so overfitting cannot make the final model worse than the best one seen.</p>
-<figure id="fig-conv">
-  <div class="fig-body">
-    <p id="conv-status" style="font-family:var(--font-ui);font-size:.86rem;color:var(--muted);margin:0 0 8px"></p>
-    <div class="panels">
-      <div class="panel"><span class="pl">a</span><div class="ptitle">Training loss and validation NLL</div><div id="cv-loss" class="plot loading">Loading…</div></div>
-      <div class="panel"><span class="pl">b</span><div class="ptitle">Held-out forecast error (decoded MAE)</div><div id="cv-mae" class="plot loading">Loading…</div></div>
-      <div class="panel"><span class="pl">c</span><div class="ptitle">Drift error vs the true equation</div><div id="cv-drift" class="plot loading">Loading…</div></div>
-      <div class="panel"><span class="pl">d</span><div class="ptitle">Recovered intervention effect (true −0.020/yr)</div><div id="cv-u" class="plot loading">Loading…</div></div>
-    </div>
-  </div>
-  <figcaption><b>Figure 9 | Convergence of the long run.</b> Epochs on a log scale. (a) Training loss and validation NLL from 32 futures every 5 epochs; the validation curve is noisy because it is a Monte Carlo estimate. (b) Mean absolute error forecasting held-out people's last visit from their first; the dashed line is the 80-epoch model (0.655) and the dotted line is gradient-boosted trees (0.665). (c) Relative MSE of the learned drift against the true drift through the encoder (lower is better; the 80-epoch model scored 0.69). (d) Learned intervention effect on the true nutrient axis.</figcaption>
-</figure>
+<h3 id="convergence">3.4 Training length, overfitting and the learning rate</h3>
+<p>All runs, with curves, are on the <a href="https://claude.ai/artifact/DYeUTkDPz2fzUZqALvmYJx">training-convergence page</a>.</p>
+<p><b>With 20,000 people:</b></p>
+<ul>
+  <li>Model A converges within 20–40 epochs.</li>
+  <li>From about epoch 150, training and validation loss separate, the signature of overfitting, and held-out forecast error and drift error rise with them.</li>
+  <li>On HetGNN latents the held-out metrics hold up longer (forecast error flat to about epoch 1,000), but the model still overfits.</li>
+  <li>The first long run held a high learning rate (2×10⁻³) for thousands of epochs and diverged to NaN at epoch 1,855.</li>
+</ul>
+<p><b>With 500,000 people:</b></p>
+<ul>
+  <li>Training and validation loss stay together, so the overfitting was a data-size problem.</li>
+  <li>A slower problem remains. At a near-constant learning rate, the drift error against the truth climbed from 0.60 to 0.81 by epoch 900 and the learned treatment effect shrank from −0.019 to −0.011 (true −0.020), while forecast error stayed flat (0.691–0.693).</li>
+  <li>The cause: with visits 3–12 years apart, a slow drift and a fast pull-back plus large noise produce the same visit pairs.</li>
+</ul>
+<p><b>Attempted fixes</b> (600 epochs each, learning rate annealed, 500k transformer):</p>
+<div class="tbl-wrap"><table>
+<thead><tr><th>Setting</th><th class="n">Drift error at epoch 600</th><th class="n">Treatment effect</th><th class="n">Forecast error (kept checkpoint)</th><th>Hallmarks found (kept checkpoint)</th></tr></thead>
+<tbody>
+<tr><td>Jacobian penalty 0.01 (kept recipe)</td><td class="n">0.667 (0.636 at the kept epoch 275)</td><td class="n">−0.018</td><td class="n">0.692</td><td>6/6</td></tr>
+<tr><td>+ cap on directional rates above 1/yr</td><td class="n">0.664</td><td class="n">−0.018</td><td class="n">0.692</td><td>6/6</td></tr>
+<tr><td>noise penalty 0.05·‖Σ‖²</td><td class="n">1.004</td><td class="n">−0.010</td><td class="n">0.693</td><td>4/6 (dispersion and frailty basin lost)</td></tr>
+<tr><td>kinetic-energy penalty 0.1·‖f‖²<sup><a href="#ref-6">6</a></sup></td><td class="n">0.965</td><td class="n">−0.008</td><td class="n">0.691</td><td>3/6 (irreversibility, intervention, pathways lost)</td></tr>
+<tr><td>Jacobian penalty 0.1</td><td class="n">0.845 at epoch 100 (stopped)</td><td class="n">−0.012</td><td class="n">0.693</td><td>—</td></tr>
+</tbody></table></div>
+<p>None of the penalties helps. The noise and kinetic-energy penalties make the drift worse by suppressing real dynamics. What limited the creep was annealing the learning rate, and in practice, keeping the best early checkpoint. The real fix is data on short timescales: denser lab draws, or dated clinical events entered as source terms (§10).</p>
 
 <h3>3.5 How predictions are read out</h3>
 <p>A forecast for a person is 32 (or more) sample paths of <i>z</i>. Pushing each path through the decoder gives marker trajectories with uncertainty bands. Pushing it through the hazard head gives an instantaneous death rate λ(<i>z</i>(<i>a</i>)). Integrating that rate along each path and averaging over paths gives a survival curve. The decoder and hazard head are the frozen ones from the encoder stage. Model A only moves the point.</p>
@@ -282,8 +432,9 @@ footer { max-width: var(--measure); margin: 4rem auto 0; font-family: var(--font
 <!-- ============================================================ 4 -->
 <section class="col" id="landscape">
 <h2>4. The aging landscape it learned</h2>
+<div class="callout"><p><b>Sections 4–8 are the first, detailed validation:</b> the transformer version, trained on the 20,000-person world for 80 epochs (<code>runs/synthetic/{on,off}/seed{0,1,2}</code>). The separated <code>model_a_transformer</code> was later retrained with the same settings, and its results are within seed-to-seed noise of these. Results at 500,000 people are in §9.</p></div>
 <p>The drift is a vector field in 16 dimensions, which nobody can look at. To see it, we cut a 2D slice through the space and ask which way the field pushes within that slice. The horizontal axis is the model's own <b>arrow of aging</b>: the single direction <i>w</i> along which its drift points forward at almost every held-out state (§7.3). The second axis is the direction in <i>z</i> that best predicts the true inflammation axis, made perpendicular to <i>w</i>.</p>
-<p>A field in a plane can be split into a downhill part and a swirling part. We solve for the height map <i>U</i> whose downhill direction best matches the drift in the slice (a least-squares Helmholtz projection). The surface below is that <i>U</i>; balls roll downhill on it. In this slice the downhill part explains 87% of the flow, and 13% is rotation that a surface cannot show. Model A's own landscape network <i>V</i><sub>ψ</sub> is <i>not</i> used here, because it turned out not to be identifiable (§9).</p>
+<p>The picture of development or aging as a ball rolling through a landscape goes back to Waddington<sup><a href="#ref-15">15</a></sup>; here the landscape is computed from the learned model. A field in a plane can be split into a downhill part and a swirling part. We solve for the height map <i>U</i> whose downhill direction best matches the drift in the slice (a least-squares Helmholtz projection). The surface below is that <i>U</i>; balls roll downhill on it. In this slice the downhill part explains 87% of the flow, and 13% is rotation that a surface cannot show. Model A's own landscape network <i>V</i><sub>ψ</sub> is <i>not</i> used here, because it turned out not to be identifiable (§10).</p>
 </section>
 
 <figure id="fig3">
@@ -343,13 +494,13 @@ footer { max-width: var(--measure); margin: 4rem auto 0; font-family: var(--font
 </figure>
 
 <section class="col">
-<p><b>Reading the result.</b> The model gets the metabolic effect right and specific. HbA1c and glucose bend down, starting at the moment of treatment and growing with time. By 90, treatment from baseline lowers HbA1c by a median 4.1 mmol/mol (80% of twins: 2.6–6.1). The non-metabolic markers barely move: their paired effect bands straddle zero, as planted. It also gets the order of benefit right: the earlier the start, the larger the gain. But it <b>underestimates the survival benefit by about half</b>: +0.45 years alive before 90 against +0.98 in the truth when started at baseline, and none at all for starts at 65 or 75 where the truth still gives +0.23 and +0.05. The cause is the hazard head, not the dynamics. It was fitted once on the encoder's latent and gives the metabolic direction too little weight. This is the same weakness that makes the model's survival predictions no better than a Cox model (§6). Training the hazard along simulated paths (§9) is the fix to try.</p>
+<p><b>Reading the result.</b> The model gets the metabolic effect right and specific. HbA1c and glucose bend down, starting at the moment of treatment and growing with time. By 90, treatment from baseline lowers HbA1c by a median 4.1 mmol/mol (80% of twins: 2.6–6.1). The non-metabolic markers barely move: their paired effect bands straddle zero, as planted. It also gets the order of benefit right: the earlier the start, the larger the gain. But it <b>underestimates the survival benefit by about half</b>: +0.45 years alive before 90 against +0.98 in the truth when started at baseline, and none at all for starts at 65 or 75 where the truth still gives +0.23 and +0.05. The cause is the hazard head, not the dynamics. It was fitted once on the encoder's latent and gives the metabolic direction too little weight. This is the same weakness that makes the model's survival predictions no better than a Cox model (§6). Training the hazard along simulated paths (§10) is the fix to try.</p>
 </section>
 
 <section class="col" id="reality">
 <h3>Intervention predictions vs reality</h3>
 <p>The scenarios above are for one person. Here we test the model's intervention predictions across the held-out cohort, against two kinds of reality.</p>
-<p><b>Trial-style check.</b> The treatment was randomised: 30% of people got it from their first visit. Held-out people therefore form a treated arm and an untreated arm, just as in a trial. We measure each person's actual HbA1c change per year between their first and last visit. The model predicts the same quantity for the same people from their first visit and their actual arm, and the true equation does too. We do the same for survival: the observed Kaplan–Meier curve in each arm, against the model's predicted survival for exactly those people. This is the check that can be run on real cohorts, wherever treatment was randomised or can be credibly treated as such.</p>
+<p><b>Trial-style check.</b> The treatment was randomised: 30% of people got it from their first visit. Held-out people therefore form a treated arm and an untreated arm, just as in a trial. We measure each person's actual HbA1c change per year between their first and last visit. The model predicts the same quantity for the same people from their first visit and their actual arm, and the true equation does too. We do the same for survival: the observed Kaplan–Meier curve<sup><a href="#ref-26">26</a></sup> in each arm, against the model's predicted survival for exactly those people. This is the check that can be run on real cohorts, wherever treatment was randomised or can be credibly treated as such.</p>
 <p><b>Per-person check.</b> Only possible in a synthetic world: for 400 held-out people, the predicted effect of treating from baseline against the true equation's effect for the same person.</p>
 </section>
 <figure id="fig3c">
@@ -369,8 +520,9 @@ footer { max-width: var(--measure); margin: 4rem auto 0; font-family: var(--font
 </section>
 
 <section class="col">
-<h3>Where it goes wrong: the frailty basin</h3>
+<h3>Where it went wrong at 20k: the frailty basin</h3>
 <p>The same construction in the frailty plane shows the model's one clear miss. The truth (left) has two parallel valleys, robust and frail, separated by a ridge. People sit in one or the other, and the observed states are bimodal along this axis (below). Model A's landscape (right) has a single broad valley. It treats occasional jumps between wells as extra noise. The wells relax in about 0.3 years and visits are at least a year apart, so a model that only sees visit pairs never watches anyone settle into a well. Its Gaussian transition likelihood also cannot represent a two-humped landing distribution.</p>
+<p><b>At 500,000 people this changes.</b> The 500k transformer version finds two attractors, with excess deaths in the high-risk basin (one-sided Fisher p ≈ 3×10⁻¹⁷), and finds a single attractor in the null world. The landscape figure below still shows the 20k model.</p>
 </section>
 <figure id="fig4">
   <div class="fig-body">
@@ -434,13 +586,13 @@ footer { max-width: var(--measure); margin: 4rem auto 0; font-family: var(--font
       </table>
     </div>
   </div>
-  <figcaption><b>Figure 6 | Forecast accuracy.</b> (a) Median and 50%/90% bands of 200 simulated futures (teal) for one held-out person, given only their first visit; dots are what was later measured. (b) Mean absolute error by gap between first and last visit (3 seeds; ±sd is below 0.005 everywhere). Model A is best at every horizon. It beats GBM most clearly at the shortest (0.568 vs 0.587) and longest (0.744 vs 0.764) gaps. Its advantage over LOCF grows with the gap because it knows which way people drift. Table: hallmarks-ON, mean of 3 seeds. CRPS scores the whole predictive distribution (lower is better). The interval columns show how often the true value fell inside the predicted interval: ideal is 50% and 90%, and Model A's intervals are slightly too narrow. Survival C-index: the trajectory adds nothing over a Cox model on the same baseline labs (0.783 vs 0.782). On this cohort hazard depends only on the current state, so there is nothing for a trajectory to add.</figcaption>
+  <figcaption><b>Figure 6 | Forecast accuracy.</b> (a) Median and 50%/90% bands of 200 simulated futures (teal) for one held-out person, given only their first visit; dots are what was later measured. (b) Mean absolute error by gap between first and last visit (3 seeds; ±sd is below 0.005 everywhere). Model A is best at every horizon. It beats GBM most clearly at the shortest (0.568 vs 0.587) and longest (0.744 vs 0.764) gaps. Its advantage over LOCF grows with the gap because it knows which way people drift. Table: hallmarks-ON, mean of 3 seeds. CRPS<sup><a href="#ref-23">23</a></sup> scores the whole predictive distribution (lower is better). The interval columns show how often the true value fell inside the predicted interval: ideal is 50% and 90%, and Model A's intervals are slightly too narrow. Survival C-index: the trajectory adds nothing over a Cox model on the same baseline labs (0.783 vs 0.782). On this cohort hazard depends only on the current state, so there is nothing for a trajectory to add.</figcaption>
 </figure>
 
 <!-- ============================================================ 7 -->
 <section class="col" id="hallmarks">
 <h2>7. Hallmark tests</h2>
-<p>Each test turns a hallmark of aging into a measurable property of the learned equation, with a decision rule fixed in <code>prereg/analysis_plan.md</code>. All tests run on held-out people only. Each is run on the true equation (it must fire on ON and stay silent on OFF), then on Model A trained on ON and on OFF, with 3 seeds each. Three control versions of Model A, trained on ON with seed 0, show which part of the model each detection relies on. Four tests were re-specified after the first synthetic run because their first versions failed on the true equation itself; §9 lists them.</p>
+<p>Each test turns a hallmark of aging into a measurable property of the learned equation, with a decision rule fixed in <code>prereg/analysis_plan.md</code>. All tests run on held-out people only. Each is run on the true equation (it must fire on ON and stay silent on OFF), then on Model A trained on ON and on OFF, with 3 seeds each. Three control versions of Model A, trained on ON with seed 0, show which part of the model each detection relies on. Four tests were re-specified after the first synthetic run because their first versions failed on the true equation itself; §10 lists them.</p>
 
 <div class="test">
 <h3>7.1 Inflammaging <span class="pill pass">3/3 ON · 0/3 OFF</span></h3>
@@ -464,7 +616,7 @@ footer { max-width: var(--measure); margin: 4rem auto 0; font-family: var(--font
 <h3>7.3 Irreversibility <span class="pill pass">3/3 ON · 0/3 OFF</span></h3>
 <dl class="def">
   <dt>Question</dt><dd>Is there an "arrow of aging": a direction the model never runs backwards along without intervention?</dd>
-  <dt>Method</dt><dd>At 1,000 held-out states compute the drift <i>f</i>. Find the max-margin direction <i>w</i> that separates {<i>f</i>} from {−<i>f</i>} (linear SVM through the origin) on one half. On the other half, count states whose drift points backwards (<i>w</i>·<i>f</i> ≤ 0). Then simulate 10 years and count mean paths that moved backwards along <i>w</i>.</dd>
+  <dt>Method</dt><dd>At 1,000 held-out states compute the drift <i>f</i>. Find the max-margin direction <i>w</i> that separates {<i>f</i>} from {−<i>f</i>} (linear SVM through the origin<sup><a href="#ref-35">35</a></sup>) on one half. On the other half, count states whose drift points backwards (<i>w</i>·<i>f</i> ≤ 0). Then simulate 10 years and count mean paths that moved backwards along <i>w</i>.</dd>
   <dt>Rule</dt><dd>backwards states &lt; 10% and backwards 10-year paths &lt; 5%</dd>
   <dt>Result</dt><dd>ON <span class="num">0.6%</span> of states, <span class="num">0–1.2%</span> of paths (truth 0%, 0%). OFF <span class="num">11–39%</span> of states, <span class="num">18–40%</span> of paths (truth 15%, 14%).</dd>
 </dl>
@@ -482,7 +634,7 @@ footer { max-width: var(--measure); margin: 4rem auto 0; font-family: var(--font
 <h3>7.5 Molecular hallmarks via the Jacobian <span class="pill part">2/3 ON · 0/3 OFF</span></h3>
 <dl class="def">
   <dt>Question</dt><dd>Do the directions in which the model ages fastest map onto the planted aging pathways in the gene panel?</dd>
-  <dt>Method</dt><dd>At 300 held-out states compute the drift Jacobian ∂<i>f</i>/∂<i>z</i>, take the 2 eigenvectors with the largest real part (the least stable, "aging" modes) and average them into one subspace. Decode it into the 500 genes through the decoder Jacobian, and score each pathway by the mean gene loading. There are two nulls: 2,000 random subspaces (direction null, Benjamini–Hochberg across 20 pathways) and random gene sets of equal size.</dd>
+  <dt>Method</dt><dd>At 300 held-out states compute the drift Jacobian ∂<i>f</i>/∂<i>z</i>, take the 2 eigenvectors with the largest real part (the least stable, "aging" modes) and average them into one subspace. Decode it into the 500 genes through the decoder Jacobian, and score each pathway by the mean gene loading, a set-level enrichment in the spirit of GSEA<sup><a href="#ref-21">21</a></sup>. There are two nulls: 2,000 random subspaces (direction null, Benjamini–Hochberg across 20 pathways<sup><a href="#ref-22">22</a></sup>) and random gene sets of equal size.</dd>
   <dt>Rule</dt><dd>≥ 1 planted aging pathway with q &lt; 0.05 on both nulls, and ≤ 1 non-aging pathway detected</dd>
   <dt>Result</dt><dd>Seed 0 finds 5 of 7 planted pathways (OXPHOS, UPR, DNA repair, mTORC1, IGF-1) with 0 false positives, matching the true equation exactly. Seed 1 finds 0 and seed 2 finds 2; OFF finds none. SASP and the inflammatory response are not found even in the truth: inflammation relaxes quickly (0.4/yr), so it is never a leading slow mode. The no-landscape and shuffled-age controls find nothing, so this test does rely on the landscape term and on age.</dd>
 </dl>
@@ -513,7 +665,7 @@ footer { max-width: var(--measure); margin: 4rem auto 0; font-family: var(--font
 <section class="col">
 <div class="test">
 <h3>7.7 Hazard attribution (encoder-level) <span class="pill part">3/3 ON · 1/3 OFF</span></h3>
-<p>This test checks the encoder and hazard head, not Model A. It uses integrated gradients to attribute each person's predicted death rate to their input markers, then asks whether the inflammatory share grows with age. On ON it rises from 6.0% in the 40s to 9.4% in the 70s (slope 0.011 per decade, CI 0.009–0.013), above the same slope in a Cox model (0.004). It also fired on one OFF seed, so on real data it will only count when it beats the Cox comparison, as the pre-registration specifies.</p>
+<p>This test checks the encoder and hazard head, not Model A. It uses integrated gradients<sup><a href="#ref-20">20</a></sup> to attribute each person's predicted death rate to their input markers, then asks whether the inflammatory share grows with age. On ON it rises from 6.0% in the 40s to 9.4% in the 70s (slope 0.011 per decade, CI 0.009–0.013), above the same slope in a Cox model (0.004). It also fired on one OFF seed, so on real data it will only count when it beats the Cox comparison, as the pre-registration specifies.</p>
 </div>
 </section>
 
@@ -528,41 +680,124 @@ footer { max-width: var(--measure); margin: 4rem auto 0; font-family: var(--font
 </figure>
 
 <!-- ============================================================ 9 -->
-<section class="col" id="limits">
-<h2>9. What this does and does not show</h2>
-<h3>What the tests tell us</h3>
-<p><b>The pipeline can find planted mechanisms.</b> Given data shaped like a real cohort (sparse, irregular, noisy, with deaths removing people), a 46k-parameter SDE on a learned latent finds a forward arrow of aging, late-life acceleration of inflammation, age-dependent loss of predictability, the specific metabolic action of an intervention, and, in one seed of three, the right molecular pathways. Every one of these detections has a matching null that stays silent.</p>
-<p><b>The tests themselves are calibrated.</b> On the true equation, all six tests fire on ON and none fire on OFF. A positive result on real data will therefore mean something about the data rather than about the test.</p>
-<p><b>It forecasts better than the alternatives we tried,</b> and its advantage grows with the forecast horizon, which is what a model of dynamics should do.</p>
-
-<h3>What they do not tell us</h3>
-<div class="callout warn">
-<p><b>Nothing here is about human biology.</b> The world is simulated, with hallmarks we planted. These results show the machinery can recover such structure when it exists. Whether real cohorts contain it is the question for HRS, CHARLS and UK Biobank.</p>
-</div>
+<section class="col" id="ukb">
+<h2>9. At UK Biobank scale (500,000 people)</h2>
+<p>The 500k transformer version was trained on the 500,000-person world with the recipe in §3.3 (one seed). Its null-world counterpart was trained with the same recipe on the matching null cohort. Everything below is measured on held-out people.</p>
+<div class="tbl-wrap"><table>
+<thead><tr><th>Measure</th><th class="n">Hallmarks-ON</th><th class="n">Hallmarks-OFF (null)</th></tr></thead>
+<tbody>
+<tr><td>Forecast error (trees on the same task)</td><td class="n">0.692 (0.687)</td><td class="n">0.841 (0.766)</td></tr>
+<tr><td>Survival C-index (Cox on baseline markers)</td><td class="n">0.785 (0.784)</td><td class="n">0.551 (0.556)</td></tr>
+<tr><td>True hidden state recovered (mean affine R²)</td><td class="n">0.871</td><td class="n">0.798</td></tr>
+<tr><td>Drift error vs true equation</td><td class="n">0.636</td><td class="n">0.306</td></tr>
+<tr><td>Inflammaging (late/early slope ratio)</td><td class="n">found (4.53)</td><td class="n">not found (0.14)</td></tr>
+<tr><td>Dispersion (noise ratio 80 vs 45)</td><td class="n">found (7.95; truth 3.6)</td><td class="n">not found (1.03)</td></tr>
+<tr><td>Irreversibility (states drifting back)</td><td class="n">found (0.4%)</td><td class="n">not found (8.4%)</td></tr>
+<tr><td>Nutrient intervention (metabolic share, p)</td><td class="n">found (0.64, p = 0.001)</td><td class="n">not found (0.18, p = 0.93)</td></tr>
+<tr><td>Pathways (planted found / false)</td><td class="n">found (5/7, 0 false)</td><td class="n">not found (0, 0 false)</td></tr>
+<tr><td>Frailty basin (attractors, deaths in high-risk basin)</td><td class="n">found (2, p ≈ 3×10⁻¹⁷)</td><td class="n">not found (1)</td></tr>
+</tbody></table></div>
+<p><b>Intervention against reality</b> (held-out people of the 500k ON world; trial-style arms because treatment was randomised):</p>
+<div class="tbl-wrap"><table>
+<thead><tr><th>Measure</th><th class="n">Observed</th><th class="n">Model</th><th class="n">True equation</th></tr></thead>
+<tbody>
+<tr><td>Treated − untreated HbA1c change (mmol/mol per year)</td><td class="n">−0.125 (95% CI −0.143 to −0.107)</td><td class="n">−0.142</td><td class="n">−0.147</td></tr>
+<tr><td>Per-person HbA1c effect at +10 years, mean</td><td class="n">—</td><td class="n">−1.37</td><td class="n">−1.42</td></tr>
+<tr><td>Per-person years gained over 15 years (correlation with truth)</td><td class="n">—</td><td class="n">0.049 (r = 0.46)</td><td class="n">0.036</td></tr>
+<tr><td>Alive at 15 years, untreated arm</td><td class="n">78%</td><td class="n">65%</td><td class="n">79%</td></tr>
+</tbody></table></div>
+<p><b>What changed from 20k to 500k:</b></p>
 <ul>
-  <li><b>Death prediction: no gain.</b> C-index 0.783 vs 0.782 for Cox on baseline labs. In this world hazard depends only on the current state, so a trajectory cannot add information. Real biology may differ, but nothing here shows an advantage.</li>
-  <li><b>The encoder is the bottleneck.</b> Drift error rises from 0.51 (oracle) to 0.69 (encoder) in relative MSE, and the learned latent explains only 82% of the true state linearly.</li>
-  <li><b>Noise growth is overstated</b> (8× vs 4.4× by age 80 at fixed states). Likely causes: between-well frailty jumps and leftover encoder noise at older ages are absorbed as diffusion, and the observation-noise estimate does not vary with age.</li>
-  <li><b>The landscape network V is not interpretable on its own.</b> Observed held-out visit pairs go downhill in V only 51% of the time, and V correlates with age at −0.26 to +0.24 across seeds. The drift as a whole is right; how the model splits it between V and J is arbitrary. This is why Fig. 3 uses a Helmholtz projection of the full drift.</li>
-  <li><b>The Jacobian test is seed-sensitive</b> (5, 0 and 2 of 7 pathways). Averaging Jacobians across an ensemble of seeds is the obvious fix and is not implemented yet.</li>
-  <li><b>Multi-stable states are missed</b> (Fig. 4). A mixture-density or score-based transition model, or visits closer together than the relaxation time, would be needed.</li>
-  <li><b>Four tests were redesigned after the first run,</b> because their first versions failed on the truth itself: irreversibility, intervention share, attractor slice and attractor hazard ranking. That is what a synthetic stage is for. The final versions are now frozen in the pre-registration, before any real data is seen.</li>
-  <li><b>Not done yet:</b> training the hazard along simulated paths, fine-tuning encoder and dynamics together, a hyperparameter search, and the graph encoder for real omics.</li>
+  <li><b>Gains:</b> the frailty basin is found; the per-person HbA1c effect rises from 82% to 96% of the true effect; and the per-person survival benefit goes from anti-correlated with the truth (r = −0.30) to positively correlated (r = 0.46).</li>
+  <li><b>Unchanged:</b> absolute survival is still too pessimistic. That is a property of the static death-risk head, not of data size.</li>
+  <li><b>Worse:</b> forecasting is now slightly behind gradient-boosted trees on the ON world, and clearly behind on the null world.</li>
+</ul>
+<p>All of this is one seed; the HetGNN version at this scale is training.</p>
+</section>
+
+<section class="col" id="limits">
+<h2>10. What this does and does not show</h2>
+<div class="callout warn"><p><b>Nothing here is about human biology yet.</b> Both worlds are simulated, with hallmarks we planted. The results show the machinery can recover such structure when it exists and stays silent when it does not. Whether real cohorts contain it is the question for HRS, CHARLS and UK Biobank, with rodent transcriptomic data (TACO<sup><a href="#ref-31">31</a></sup>) for the molecular hallmarks.</p></div>
+<h3>What the tests support</h3>
+<ul>
+  <li><b>The tests are calibrated.</b> On the true equation, all six hallmark tests fire on the ON world and none on the null world, in both cohorts. A positive result on real data would therefore say something about the data, not about the test.</li>
+  <li><b>The model can find planted mechanisms</b> in data shaped like a real cohort: sparse, irregular, noisy, with deaths removing people. At 500k it finds all six hallmarks with no false alarms in the null world (one seed).</li>
+  <li><b>Treatment effects on the targeted system are recovered closely</b> at 500k, both in trial-style arm comparisons and per person.</li>
+</ul>
+<h3>Known weaknesses</h3>
+<ul>
+  <li><b>Survival is miscalibrated.</b> In every version the model's 15-year survival is about 12–13 points too low. Its ranking of who dies first is no better than a Cox model on baseline labs, though in these worlds hazard depends only on the current state, so a trajectory cannot add information. A likely cause is noise that grows too fast with age, which inflates the hazard averaged along paths. The death-risk head is also fitted once on the encoder and never along simulated paths. Training it along paths is the next fix to try.</li>
+  <li><b>Fast dynamics are not identifiable from slow visits.</b> With 1–12-year visit gaps, a slow drift and a fast pull-back plus large noise fit the data equally well. Long training slowly moves the model towards the wrong one, and no penalty we tried prevents this (§3.4).</li>
+  <li><b>Sudden events cannot be represented.</b> The noise is continuous and Gaussian. Acute events such as a heart attack or stroke, which shift the state in days and then partly recover, are not in the synthetic worlds and cannot be expressed by the model. The planned extension is a jump-diffusion: dated clinical events enter as source terms with state-dependent rates, which the dated hospital records in UK Biobank make observable.</li>
+  <li><b>Noise growth with age is overstated</b> (about 8× against a true 3.6–4.4× between ages 45 and 80).</li>
+  <li><b>The landscape network V is not interpretable on its own.</b> Only the full drift is constrained by the data; the 3D surfaces on this page are Helmholtz projections of that drift, not V.</li>
+  <li><b>Forecasting at 500k is slightly behind gradient-boosted trees</b>, and clearly behind on the 500k null world. Part of this is the encoder bottleneck: the learned latent explains 80–87% of the true state linearly.</li>
+  <li><b>Seed sensitivity.</b> The pathway test varied across seeds at 20k, and the 500k results are a single seed.</li>
+  <li><b>Tests were redesigned after seeing results.</b> Four hallmark tests were redesigned after the first 20k run, because their first versions failed on the true equation itself. The final rules are fixed in the pre-registration (<code>prereg/analysis_plan.md</code>) before any real data.</li>
 </ul>
 </section>
 
-<!-- ============================================================ 10 -->
-<section class="col" id="repro">
-<h2>10. Reproduce</h2>
-<pre class="mono" style="overflow-x:auto;background:var(--panel);border:1px solid var(--rule);padding:12px;border-radius:4px;font-size:.8rem;line-height:1.5">conda env create -f environment.yml &amp;&amp; conda run -n mwm pip install -e .
-# full synthetic validation: 2 cohorts × 3 seeds, ~1.5 h on one RTX 4070 Ti
-conda run -n mwm python scripts/run_synthetic_validation.py --config configs/synthetic.yaml --out runs/synthetic
-# figure data for this page (uses saved weights, ~2 min)
-conda run -n mwm python scripts/make_model_a_figure_data.py</pre>
-<p>Key files: <code>src/mwm/dynamics/sde.py</code>, <code>potential.py</code> (the model) · <code>src/mwm/encoders/</code> (encoder) · <code>src/mwm/interrogate/</code> (one file per hallmark test) · <code>src/mwm/data/synthetic.py</code> (the world) · <code>reports/synthetic_validation.md</code>, <code>reports/decisions.md</code> · <code>prereg/analysis_plan.md</code>.</p>
+<section class="col" id="refs">
+<h2>11. References</h2>
+<ol class="refs">
+  <li id="ref-1">Chen RTQ, Rubanova Y, Bettencourt J, Duvenaud D. Neural ordinary differential equations. <i>NeurIPS</i> 2018. arXiv:1806.07366.</li>
+  <li id="ref-2">Rubanova Y, Chen RTQ, Duvenaud D. Latent ordinary differential equations for irregularly-sampled time series. <i>NeurIPS</i> 2019. arXiv:1907.03907.</li>
+  <li id="ref-3">Li X, Wong T-KL, Chen RTQ, Duvenaud D. Scalable gradients for stochastic differential equations. <i>AISTATS</i> 2020. arXiv:2001.01328.</li>
+  <li id="ref-4">Kidger P, Foster J, Li X, Lyons T. Neural SDEs as infinite-dimensional GANs. <i>ICML</i> 2021. arXiv:2102.03657.</li>
+  <li id="ref-5">Kloeden PE, Platen E. <i>Numerical Solution of Stochastic Differential Equations.</i> Springer, 1992.</li>
+  <li id="ref-6">Finlay C, Jacobsen J-H, Nurbekyan L, Oberman AM. How to train your neural ODE: the world of Jacobian and kinetic regularization. <i>ICML</i> 2020. arXiv:2002.02798.</li>
+  <li id="ref-7">Hutchinson MF. A stochastic estimator of the trace of the influence matrix for Laplacian smoothing splines. <i>Commun Stat Simul Comput</i> 1990;19:433–450.</li>
+  <li id="ref-8">Vaswani A, et al. Attention is all you need. <i>NeurIPS</i> 2017. arXiv:1706.03762.</li>
+  <li id="ref-9">He K, Chen X, Xie S, Li Y, Dollár P, Girshick R. Masked autoencoders are scalable vision learners. <i>CVPR</i> 2022. arXiv:2111.06377.</li>
+  <li id="ref-10">Hamilton WL, Ying R, Leskovec J. Inductive representation learning on large graphs. <i>NeurIPS</i> 2017. arXiv:1706.02216.</li>
+  <li id="ref-11">Schlichtkrull M, Kipf TN, Bloem P, van den Berg R, Titov I, Welling M. Modeling relational data with graph convolutional networks. <i>ESWC</i> 2018. arXiv:1703.06103.</li>
+  <li id="ref-12">Fey M, Lenssen JE. Fast graph representation learning with PyTorch Geometric. <i>ICLR Workshop</i> 2019. arXiv:1903.02428.</li>
+  <li id="ref-13">Carroll RJ, Ruppert D, Stefanski LA, Crainiceanu CM. <i>Measurement Error in Nonlinear Models</i>, 2nd ed. Chapman &amp; Hall/CRC, 2006.</li>
+  <li id="ref-14">Zhou JX, Aliyu MDS, Aurell E, Huang S. Quasi-potential landscape in complex multi-stable systems. <i>J R Soc Interface</i> 2012;9:3539–3553.</li>
+  <li id="ref-15">Waddington CH. <i>The Strategy of the Genes.</i> Allen &amp; Unwin, 1957.</li>
+  <li id="ref-16">López-Otín C, Blasco MA, Partridge L, Serrano M, Kroemer G. Hallmarks of aging: an expanding universe. <i>Cell</i> 2023;186:243–278.</li>
+  <li id="ref-17">Pyrkov TV, et al. Longitudinal analysis of blood markers reveals progressive loss of resilience and predicts human lifespan limit. <i>Nat Commun</i> 2021;12:2765.</li>
+  <li id="ref-18">Avchaciov K, et al. Unsupervised learning of aging principles from longitudinal data. <i>Nat Commun</i> 2022;13:6529.</li>
+  <li id="ref-19">Farrell S, Mitnitski A, Rockwood K, Rutenberg AD. Interpretable machine learning for high-dimensional trajectories of aging health. <i>PLoS Comput Biol</i> 2022;18:e1009746.</li>
+  <li id="ref-20">Sundararajan M, Taly A, Yan Q. Axiomatic attribution for deep networks. <i>ICML</i> 2017. arXiv:1703.01365.</li>
+  <li id="ref-21">Subramanian A, et al. Gene set enrichment analysis: a knowledge-based approach for interpreting genome-wide expression profiles. <i>PNAS</i> 2005;102:15545–15550.</li>
+  <li id="ref-22">Benjamini Y, Hochberg Y. Controlling the false discovery rate: a practical and powerful approach to multiple testing. <i>J R Stat Soc B</i> 1995;57:289–300.</li>
+  <li id="ref-23">Gneiting T, Raftery AE. Strictly proper scoring rules, prediction, and estimation. <i>J Am Stat Assoc</i> 2007;102:359–378.</li>
+  <li id="ref-24">Harrell FE, Califf RM, Pryor DB, Lee KL, Rosati RA. Evaluating the yield of medical tests. <i>JAMA</i> 1982;247:2543–2546.</li>
+  <li id="ref-25">Uno H, Cai T, Pencina MJ, D'Agostino RB, Wei LJ. On the C-statistics for evaluating overall adequacy of risk prediction procedures with censored survival data. <i>Stat Med</i> 2011;30:1105–1117.</li>
+  <li id="ref-26">Kaplan EL, Meier P. Nonparametric estimation from incomplete observations. <i>J Am Stat Assoc</i> 1958;53:457–481.</li>
+  <li id="ref-27">Cox DR. Regression models and life-tables. <i>J R Stat Soc B</i> 1972;34:187–220.</li>
+  <li id="ref-28">Royston P, Parmar MKB. Restricted mean survival time: an alternative to the hazard ratio for the design and analysis of randomized trials with a time-to-event outcome. <i>BMC Med Res Methodol</i> 2013;13:152.</li>
+  <li id="ref-29">Sudlow C, et al. UK Biobank: an open access resource for identifying the causes of a wide range of complex diseases of middle and old age. <i>PLoS Med</i> 2015;12:e1001779.</li>
+  <li id="ref-30">Sun BB, et al. Plasma proteomic associations with genetics and health in the UK Biobank. <i>Nature</i> 2023;622:329–338.</li>
+  <li id="ref-31">Tyshkovskiy A, et al. Universal transcriptomic hallmarks of mammalian ageing and mortality. <i>Nature</i> 2026;654:173–188. doi:10.1038/s41586-026-10542-3.</li>
+  <li id="ref-32">Lipman Y, Chen RTQ, Ben-Hamu H, Nickel M, Le M. Flow matching for generative modeling. <i>ICLR</i> 2023. arXiv:2210.02747.</li>
+  <li id="ref-33">Song Y, Sohl-Dickstein J, Kingma DP, Kumar A, Ermon S, Poole B. Score-based generative modeling through stochastic differential equations. <i>ICLR</i> 2021. arXiv:2011.13456.</li>
+  <li id="ref-34">Friedman JH. Greedy function approximation: a gradient boosting machine. <i>Ann Stat</i> 2001;29:1189–1232.</li>
+  <li id="ref-35">Cortes C, Vapnik V. Support-vector networks. <i>Mach Learn</i> 1995;20:273–297.</li>
+</ol>
+<p class="empty">Software: PyTorch, torchsde, torchdiffeq, PyTorch Geometric, scikit-learn, lifelines/scikit-survival, Plotly.js. Model B (flow matching<sup><a href="#ref-32">32</a></sup>, with a score-based correction<sup><a href="#ref-33">33</a></sup>) was the comparison model and is described in <code>reports/synthetic_validation.md</code>.</p>
 </section>
 
-<footer>Mortality world model · open-source project · Model A technical report, synthetic stage. Figures use seed 0 of the hallmarks-ON cohort unless stated.</footer>
+<section class="col" id="repro">
+<h2>12. Reproduce</h2>
+<pre class="mono" style="overflow-x:auto;background:var(--panel);border:1px solid var(--rule);padding:12px;border-radius:4px;font-size:.8rem;line-height:1.5">conda env create -f environment.yml &amp;&amp; conda run -n mwm pip install -e .
+# 20k validation (sections 4-8): 2 cohorts x 3 seeds, ~1.5 h on one RTX 4070 Ti
+conda run -n mwm python scripts/run_synthetic_validation.py --config configs/synthetic.yaml --out runs/synthetic
+# the two separated 20k models
+conda run -n mwm python scripts/train_model_a.py --config configs/model_a_transformer.yaml
+conda run -n mwm python scripts/train_model_a.py --config configs/model_a_hetgnn.yaml
+# 500k world and the 500k transformer version (section 9)
+conda run -n mwm python scripts/make_synthetic_ukb_scale.py --out data/synthetic_ukb
+conda run -n mwm python scripts/train_model_a_long.py --data-root data/synthetic_ukb --cohort on --encoder transformer \
+    --enc-epochs 40 --a-epochs 600 --lr 5e-4 --jac-penalty 0.01 --select val_mae --eval-every 25
+# simulator export + engine check (this page)
+conda run -n mwm python scripts/export_webapp_model.py --run &lt;run dir&gt; --data &lt;cohort dir&gt; --key &lt;name&gt; --label "&lt;label&gt;"
+node reports/model_a/webapp/test_engine.js</pre>
+<p>Key files: <code>src/mwm/dynamics/sde.py</code> and <code>potential.py</code> (Model A) · <code>src/mwm/encoders/</code> (transformer and HetGNN encoders) · <code>src/mwm/interrogate/</code> (one file per hallmark test) · <code>src/mwm/data/synthetic.py</code> (the worlds) · <code>src/mwm/models.py</code> (loading a trained version) · <code>reports/model_a/webapp/sim_engine.js</code> (the in-browser model) · <code>prereg/analysis_plan.md</code>.</p>
+</section>
+
+<footer>Mortality world model · open-source project · Model A technical report, synthetic stage, status 5 October 2026. Figures in sections 4–8 use seed 0 of the 20k hallmarks-ON cohort unless stated; the simulator uses the versions listed in Table 1.</footer>
 </div>
 
 <script>
@@ -964,7 +1199,7 @@ conda run -n mwm python scripts/make_model_a_figure_data.py</pre>
 
   function drawAll() {
     readColors();
-    drawLandscape(); milestoneTable(); drawScenarios(); drawReality(); drawConvergence(); drawFrailty(); drawRecovery(); drawFan(); drawMaeDt(); drawHallmarks(); scoreboard();
+    drawLandscape(); milestoneTable(); drawScenarios(); drawReality(); drawFrailty(); drawRecovery(); drawFan(); drawMaeDt(); drawHallmarks(); scoreboard();
   }
   function bind() {
     function seg(id, on) { document.getElementById(id).setAttribute("aria-pressed", on ? "true" : "false"); }
@@ -995,5 +1230,229 @@ conda run -n mwm python scripts/make_model_a_figure_data.py</pre>
     .catch(function (e) {
       Array.prototype.forEach.call(document.querySelectorAll(".loading"), function (el) { el.textContent = "Figure data could not be loaded (" + e.message + "). Reload the page to try again."; });
     });
+})();
+</script>
+
+<script>
+/* ---------------- in-browser simulator (uses sim_engine.js) ---------------- */
+(function () {
+  "use strict";
+  var E = window.MWMEngine;
+  if (!E) return;
+  var NAMES = { hba1c: ["HbA1c", "mmol/mol"], glucose: ["Glucose", "mmol/L"], crp: ["CRP", "mg/L"], il6: ["IL-6", "pg/mL"],
+    sbp: ["Systolic BP", "mmHg"], egfr: ["eGFR", "mL/min/1.73 m²"], ldl: ["LDL", "mmol/L"], grip: ["Grip", "kg"],
+    walk_speed: ["Walk speed", "m/s"], frailty_index: ["Frailty index", ""] };
+  var S = { model: null, person: 0, windows: null, K: 64, noise: true, truth: true, seed: 1, plane: "nutrient", marker: "hba1c" };
+  var manifest = [], cache = {}, cur = null, out = null, timer = null, C = {};
+  var $ = function (id) { return document.getElementById(id); };
+  function colors() { ["panel", "ink", "muted", "rule", "model", "truth", "null", "fail", "bg"].forEach(function (k) { C[k] = getComputedStyle(document.documentElement).getPropertyValue("--" + k).trim(); }); }
+  function hexA(hex, a) { var h = hex.replace("#", ""); if (h.length === 3) h = h.split("").map(function (c) { return c + c; }).join(""); var n = parseInt(h, 16); return "rgba(" + (n >> 16 & 255) + "," + (n >> 8 & 255) + "," + (n & 255) + "," + a + ")"; }
+  var CFG = { responsive: true, displaylogo: false, modeBarButtonsToRemove: ["toImage", "lasso2d", "select2d"] };
+  function ax(o) { return Object.assign({ gridcolor: C.rule, zerolinecolor: C.rule, linecolor: C.rule, tickcolor: C.rule }, o || {}); }
+  function base(o) { return Object.assign({ paper_bgcolor: C.panel, plot_bgcolor: C.panel, font: { family: "IBM Plex Sans, Arial, sans-serif", size: 12, color: C.ink }, margin: { l: 56, r: 12, t: 8, b: 80 }, legend: { orientation: "h", x: 0, y: -0.25, font: { size: 10 } }, hoverlabel: { font: { family: "IBM Plex Mono, monospace", size: 11 } } }, o || {}); }
+  function plot(id, data, layout) { var el = $(id); if (el.classList.contains("loading")) { el.classList.remove("loading"); el.textContent = ""; } Plotly.react(el, data, layout, CFG); }
+  function fmt(v, d) { return v === null || v === undefined || !isFinite(v) ? "—" : v.toFixed(d); }
+  function sgn(v, d) { if (!isFinite(v)) return "—"; var r = Math.abs(v) < Math.pow(10, -d) / 2 ? 0 : v; return (r > 0 ? "+" : r < 0 ? "−" : "") + Math.abs(r).toFixed(d); }
+
+  // ---------- data loading ----------
+  function loadModel(key) {
+    if (cache[key]) return Promise.resolve(cache[key]);
+    return fetch("models/" + key + ".json").then(function (r) { if (!r.ok) throw new Error("model " + key + ": " + r.status); return r.json(); })
+      .then(function (j) { cache[key] = { json: j, model: new E.Model(j), truth: new E.Truth(j) }; return cache[key]; });
+  }
+
+  // ---------- controls ----------
+  function renderModels() {
+    $("sim-models").innerHTML = manifest.map(function (m) {
+      return "<button type='button' class='seg sim-model' data-k='" + m.key + "' aria-pressed='" + (m.key === S.model) + "'>" + m.label + "</button>";
+    }).join(" ");
+    Array.prototype.forEach.call(document.querySelectorAll(".sim-model"), function (b) {
+      b.addEventListener("click", function () { if (S.model === b.dataset.k) return; S.model = b.dataset.k; S.person = 0; S.windows = null; renderModels(); select(); });
+    });
+  }
+  function personLabel(p) {
+    var v0 = p.visits[0] ? p.visits[0].values : {};
+    var fate = p.event ? "died at " + p.end_age.toFixed(1) : "alive at last follow-up (" + p.end_age.toFixed(1) + ")";
+    return p.id + " · first visit at " + p.age0.toFixed(1) + " · HbA1c " + fmt(v0.hba1c, 1) + " · CRP " + fmt(v0.crp, 1) + " · " + p.visits.length + " visits · " + fate + (p.u_actual ? " · treated in reality" : "");
+  }
+  function renderPeople() {
+    $("sim-person").innerHTML = cur.json.people.map(function (p, i) { return "<option value='" + i + "'" + (i === S.person ? " selected" : "") + ">" + personLabel(p) + "</option>"; }).join("");
+  }
+  function person() { return cur.json.people[S.person]; }
+  function renderWindows() {
+    var p = person(), el = $("sim-windows");
+    if (!S.windows.length) { el.innerHTML = "<span class='empty'>No treatment. Add a window or pick a preset.</span>"; return; }
+    el.innerHTML = S.windows.map(function (w, i) {
+      return "<div class='winrow'>Treat from age <input type='number' step='0.5' min='" + p.age0.toFixed(1) + "' max='90' value='" + w.start.toFixed(1) + "' data-i='" + i + "' data-f='start' aria-label='start age of window " + (i + 1) + "'>" +
+        " to <input type='number' step='0.5' min='" + p.age0.toFixed(1) + "' max='90' placeholder='end' value='" + (w.stop === null ? "" : w.stop.toFixed(1)) + "' data-i='" + i + "' data-f='stop' aria-label='stop age of window " + (i + 1) + " (empty = never)'>" +
+        (w.stop === null ? " <span class='empty'>(never stops)</span>" : "") +
+        " <button type='button' class='x' data-i='" + i + "' aria-label='remove window " + (i + 1) + "'>Remove</button></div>";
+    }).join("");
+    Array.prototype.forEach.call(el.querySelectorAll("input"), function (inp) {
+      inp.addEventListener("change", function () {
+        var w = S.windows[+inp.dataset.i], v = inp.value === "" ? null : +inp.value;
+        if (inp.dataset.f === "start") w.start = Math.min(Math.max(v === null ? p.age0 : v, p.age0), 89.5);
+        else w.stop = v === null ? null : Math.min(Math.max(v, w.start + 0.5), 90);
+        renderWindows(); schedule();
+      });
+    });
+    Array.prototype.forEach.call(el.querySelectorAll(".x"), function (b) { b.addEventListener("click", function () { S.windows.splice(+b.dataset.i, 1); renderWindows(); schedule(); }); });
+  }
+  function preset(name) {
+    var a0 = person().age0;
+    S.windows = name === "none" ? [] : name === "baseline" ? [{ start: a0, stop: null }] : name === "55" ? [{ start: Math.max(55, a0), stop: null }]
+      : name === "65" ? [{ start: Math.max(65, a0), stop: null }] : [{ start: Math.max(55, a0), stop: 65 }];
+    renderWindows(); schedule();
+  }
+  function renderMarkers() {
+    $("sim-markers").innerHTML = cur.json.weights.show.map(function (f) { return "<button type='button' class='seg sim-mk' data-f='" + f + "' aria-pressed='" + (f === S.marker) + "'>" + NAMES[f][0] + "</button>"; }).join("");
+    Array.prototype.forEach.call(document.querySelectorAll(".sim-mk"), function (b) {
+      b.addEventListener("click", function () { S.marker = b.dataset.f; renderMarkers(); if (out) drawMarker(); });
+    });
+  }
+
+  // ---------- simulation ----------
+  function schedule() { clearTimeout(timer); $("sim-status").textContent = "Simulating…"; timer = setTimeout(run, 60); }
+  function run() {
+    var t0 = performance.now(), p = person(), M = cur.model, T = cur.truth, d = M.d;
+    var K = S.noise ? S.K : 1, h = 0.25, n = Math.round((90 - p.age0) / h), hT = 0.05, nT = Math.round((90 - p.age0) / hT);
+    var eps = E.noise(n, K, d, S.seed), epsT = S.truth ? E.noise(nT, K, 8, S.seed + 7919) : null;
+    var z0 = Float64Array.from(p.z0), zt0 = Float64Array.from(p.ztrue0), none = E.schedule([]), treat = E.schedule(S.windows);
+    var hasT = S.windows.length > 0;
+    var m0 = E.simulate(M, z0, p.age0, 90, none, K, h, eps, S.noise), r0 = E.summarise(M, m0, 4);
+    var m1 = hasT ? E.simulate(M, z0, p.age0, 90, treat, K, h, eps, S.noise) : m0, r1 = hasT ? E.summarise(M, m1, 4) : r0;
+    var t0r = null, t1r = null;
+    if (S.truth) {
+      var tm0 = E.simulate(T, zt0, p.age0, 90, none, K, hT, epsT, S.noise); t0r = E.summarise(T, tm0, 20);
+      t1r = hasT ? E.summarise(T, E.simulate(T, zt0, p.age0, 90, treat, K, hT, epsT, S.noise), 20) : t0r;
+    }
+    out = { r0: r0, r1: r1, t0: t0r, t1: t1r, sim1: m1, hasT: hasT, K: K };
+    var late = S.windows.some(function (w) { return w.start > p.age0 + 0.05 || w.stop !== null; });
+    $("sim-warn").hidden = !late;
+    $("sim-warn").textContent = "This schedule starts after the first visit or stops. The model was only ever trained on treatment from the first visit onwards, so its answer here is an extrapolation; the true equation (dashed) is exact.";
+    drawLand(); drawMarker(); drawSurv(); drawSummary();
+    $("sim-status").textContent = (S.noise ? K + " futures" : "no noise") + " · " + Math.round(performance.now() - t0) + " ms";
+  }
+
+  // ---------- drawing ----------
+  function shapesWindows() {
+    return S.windows.map(function (w) { return { type: "rect", x0: w.start, x1: w.stop === null ? 90 : w.stop, y0: 0, y1: 1, yref: "paper", fillcolor: hexA(C.model, 0.08), line: { width: 0 }, layer: "below" }; });
+  }
+  function hz(lh) { return lh.map(function (r) { return r.map(function (v) { return 1 - Math.exp(-Math.exp(v)); }); }); }
+  function tr(Mx) { return Mx[0].map(function (_, j) { return Mx.map(function (r) { return r[j]; }); }); }
+  function liftSeries(plane, flat, n, d, stride, offset) {
+    var X = [], Y = [], Z = [], o = new Float64Array(3), z = new Float64Array(d);
+    for (var t = 0; t <= n; t++) { var b = t * stride + offset; for (var i = 0; i < d; i++) z[i] = flat[b + i]; E.lift(plane, z, o); X.push(o[0]); Y.push(o[1]); Z.push(o[2] + 0.04); }
+    return [X, Y, Z];
+  }
+  function drawLand() {
+    var pl = cur.json.planes[S.plane], d = cur.model.d, n = out.sim1.n, K = out.K, ages = out.r0.ages;
+    var traces = [{ type: "surface", x: pl.x, y: pl.y, z: tr(pl.U), surfacecolor: tr(hz(pl.log_hazard)), cmin: 0, cmax: 0.25, opacity: 0.9, showscale: false,
+      colorscale: [[0, "#123b4a"], [0.25, "#1f6f78"], [0.5, "#5aa77f"], [0.75, "#d9b84a"], [1, "#e0663c"]],
+      contours: { z: { show: true, color: C.rule, width: 1, start: 0, end: 20, size: 0.25 } }, hoverinfo: "skip", lighting: { ambient: 0.75, diffuse: 0.5, specular: 0.05 } }];
+    if (out.hasT && S.noise) for (var k = 0; k < Math.min(8, K); k++) {
+      var s = liftSeries(pl, out.sim1.paths, n, d, K * d, k * d);
+      traces.push({ type: "scatter3d", mode: "lines", x: s[0], y: s[1], z: s[2], line: { color: C.model, width: 2 }, opacity: 0.35, hoverinfo: "skip", showlegend: k === 0, name: "individual treated futures" });
+    }
+    var txt = ages.map(function (a) { return "age " + a.toFixed(1); });
+    var m0 = liftSeries(pl, out.r0.mean, n, d, d, 0);
+    traces.push({ type: "scatter3d", mode: "lines", x: m0[0], y: m0[1], z: m0[2], line: { color: C.null, width: 7 }, name: "untreated mean path", text: txt, hovertemplate: "%{text}<extra>untreated</extra>" });
+    if (out.hasT) { var m1 = liftSeries(pl, out.r1.mean, n, d, d, 0);
+      traces.push({ type: "scatter3d", mode: "lines", x: m1[0], y: m1[1], z: m1[2], line: { color: C.model, width: 7 }, name: "treated mean path", text: txt, hovertemplate: "%{text}<extra>treated</extra>" });
+      var mx = [], my = [], mz = [], mt = [];
+      S.windows.forEach(function (w) { [w.start, w.stop].forEach(function (a, j) { if (a === null) return; var t = Math.min(n, Math.max(0, Math.round((a - ages[0]) / (ages[1] - ages[0])))); mx.push(m1[0][t]); my.push(m1[1][t]); mz.push(m1[2][t] + 0.05); mt.push((j ? "stop " : "start ") + a.toFixed(1)); }); });
+      traces.push({ type: "scatter3d", mode: "markers+text", x: mx, y: my, z: mz, text: mt, textposition: "top center", textfont: { size: 10, color: C.ink }, marker: { size: 5, color: C.panel, line: { color: C.model, width: 3 } }, showlegend: false, hoverinfo: "text" });
+    }
+    var am = cur.json.age_map;
+    plot("sim-land", traces, base({ margin: { l: 0, r: 0, t: 0, b: 30 }, legend: { orientation: "h", x: 0, y: 0, yanchor: "top", font: { size: 10 }, bgcolor: "rgba(0,0,0,0)" },
+      scene: { xaxis: { title: { text: "arrow of aging →" }, color: C.muted, gridcolor: C.rule, showbackground: false },
+        yaxis: { title: { text: S.plane + " direction" }, color: C.muted, gridcolor: C.rule, showbackground: false },
+        zaxis: { title: { text: "U" }, color: C.muted, gridcolor: C.rule, showbackground: false },
+        camera: { eye: { x: -1.3, y: -1.6, z: 0.95 } }, aspectmode: "manual", aspectratio: { x: 1.6, y: 1, z: 0.6 } } }));
+  }
+  function drawMarker() {
+    var j = cur.json.weights.show.indexOf(S.marker), r0 = out.r0, r1 = out.r1, x = r0.markerAges, q0 = r0.markers[j].q, q1 = r1.markers[j].q, traces = [];
+    function band(xx, lo, hi, col, nm) { return [{ type: "scatter", x: xx, y: hi, mode: "lines", line: { width: 0 }, hoverinfo: "skip", showlegend: false }, { type: "scatter", x: xx, y: lo, mode: "lines", line: { width: 0 }, fill: "tonexty", fillcolor: hexA(col, 0.16), name: nm, hoverinfo: "skip" }]; }
+    traces = traces.concat(band(x, q0[0], q0[4], C.null, "untreated 10–90%"));
+    traces.push({ type: "scatter", x: x, y: q0[2], mode: "lines", line: { color: C.null, width: 2.5 }, name: "model, untreated", hovertemplate: "age %{x:.1f}: %{y:.2f}<extra>model untreated</extra>" });
+    if (out.hasT) { traces = traces.concat(band(x, q1[0], q1[4], C.model, "treated 10–90%")); traces.push({ type: "scatter", x: x, y: q1[2], mode: "lines", line: { color: C.model, width: 3 }, name: "model, treated", hovertemplate: "age %{x:.1f}: %{y:.2f}<extra>model treated</extra>" }); }
+    if (out.t0) {
+      traces.push({ type: "scatter", x: out.t0.markerAges, y: out.t0.markers[j].q[2], mode: "lines", line: { color: C.truth, width: 2, dash: "dash" }, name: "true equation, untreated", hovertemplate: "age %{x:.1f}: %{y:.2f}<extra>truth untreated</extra>" });
+      if (out.hasT) traces.push({ type: "scatter", x: out.t1.markerAges, y: out.t1.markers[j].q[2], mode: "lines", line: { color: C.ink, width: 2, dash: "dash" }, name: "true equation, treated", hovertemplate: "age %{x:.1f}: %{y:.2f}<extra>truth treated</extra>" });
+    }
+    var vx = [], vy = [];
+    person().visits.forEach(function (v) { if (v.values[S.marker] !== undefined) { vx.push(v.age); vy.push(v.values[S.marker]); } });
+    traces.push({ type: "scatter", mode: "markers", x: vx, y: vy, marker: { color: C.fail, size: 9, symbol: "diamond" }, name: "measured visits" });
+    var nm = NAMES[S.marker], isLog = cur.json.weights.std_log[j];
+    plot("sim-marker", traces, base({ xaxis: ax({ title: { text: "age" } }), yaxis: ax({ title: { text: nm[0] + (nm[1] ? " (" + nm[1] + ")" : "") + (isLog ? ", log scale" : "") }, type: isLog ? "log" : "linear" }), shapes: shapesWindows(), margin: { l: 60, r: 10, t: 8, b: 96 }, legend: { orientation: "h", x: 0, y: -0.3, font: { size: 10 } } }));
+  }
+  function drawSurv() {
+    var p = person(), tr = [{ type: "scatter", x: out.r0.ages, y: out.r0.survival, mode: "lines", line: { color: C.null, width: 3 }, name: "model, untreated" }];
+    if (out.hasT) tr.push({ type: "scatter", x: out.r1.ages, y: out.r1.survival, mode: "lines", line: { color: C.model, width: 3 }, name: "model, treated" });
+    if (out.t0) { tr.push({ type: "scatter", x: out.t0.ages, y: out.t0.survival, mode: "lines", line: { color: C.truth, width: 2, dash: "dash" }, name: "true equation, untreated" });
+      if (out.hasT) tr.push({ type: "scatter", x: out.t1.ages, y: out.t1.survival, mode: "lines", line: { color: C.ink, width: 2, dash: "dash" }, name: "true equation, treated" }); }
+    tr.push({ type: "scatter", mode: "markers+text", x: [p.end_age], y: [0.04], text: [p.event ? "died " + p.end_age.toFixed(1) : "censored " + p.end_age.toFixed(1)], textposition: "top center", textfont: { size: 10, color: C.fail },
+      marker: { symbol: p.event ? "x" : "triangle-up", size: 11, color: C.fail }, name: "what happened" });
+    plot("sim-surv", tr, base({ xaxis: ax({ title: { text: "age" }, range: [p.age0, 90.5] }), yaxis: ax({ title: { text: "probability alive" }, tickformat: ".0%", range: [0, 1.02] }), shapes: shapesWindows(), legend: { orientation: "h", x: 0, y: -0.3, font: { size: 10 } }, margin: { l: 56, r: 10, t: 8, b: 96 } }));
+  }
+  function at(r, j, age) { var x = r.markerAges, k = 0; for (var i = 0; i < x.length; i++) if (Math.abs(x[i] - age) < Math.abs(x[k] - age)) k = i; return { v: r.markers[j].q[2][k], a: x[k] }; }
+  function drawSummary() {
+    var J = cur.json.weights.show, ihb = J.indexOf("hba1c"), igl = J.indexOf("glucose"), icrp = J.indexOf("crp");
+    var rows = [["Years alive, first visit → 90", function (r) { return r.rmst; }, 2, "y"]];
+    [[ihb, "HbA1c at 80", 1], [igl, "Glucose at 80", 2], [icrp, "CRP at 80", 2]].forEach(function (q) { rows.push([q[1], function (r) { return at(r, q[0], 80).v; }, q[2], ""]); });
+    var h = "<table><thead><tr><th></th><th class='n'>Model untreated</th><th class='n'>Model treated</th><th class='n'>Effect</th>" + (out.t0 ? "<th class='n'>Truth untreated</th><th class='n'>Truth treated</th><th class='n'>Effect</th>" : "") + "</tr></thead><tbody>";
+    rows.forEach(function (row) {
+      var a = row[1](out.r0), b = row[1](out.r1);
+      h += "<tr><td>" + row[0] + "</td><td class='n'>" + fmt(a, row[2]) + "</td><td class='n'>" + (out.hasT ? fmt(b, row[2]) : "—") + "</td><td class='n'><b>" + (out.hasT ? sgn(b - a, row[2]) : "—") + "</b></td>";
+      if (out.t0) { var c = row[1](out.t0), e = row[1](out.t1); h += "<td class='n'>" + fmt(c, row[2]) + "</td><td class='n'>" + (out.hasT ? fmt(e, row[2]) : "—") + "</td><td class='n'><b>" + (out.hasT ? sgn(e - c, row[2]) : "—") + "</b></td>"; }
+      h += "</tr>";
+    });
+    h += "</tbody></table>";
+    var ms = (manifest.filter(function (m) { return m.key === S.model; })[0] || {}).summary || {};
+    h += "<p class='empty' style='margin:8px 0 0'>Model check on all held-out people: forecast error " + fmt(ms.forecast_mae, 3) + " (gradient-boosted trees " + fmt(ms.gbm_mae, 3) + "), survival C-index " + fmt(ms.c_index, 3) + " (Cox " + fmt(ms.cox_c_index, 3) + "). The model's absolute survival is too pessimistic by about 12–13 points at 15 years in every version tested; compare its survival curve with the true one rather than reading it literally.</p>";
+    $("sim-sum").innerHTML = h;
+  }
+
+  // ---------- wiring ----------
+  function select() {
+    $("sim-status").textContent = "Loading model…";
+    loadModel(S.model).then(function (c) {
+      cur = c; if (S.person >= c.json.people.length) S.person = 0;
+      if (!S.windows) S.windows = [{ start: person().age0, stop: null }];
+      renderPeople(); renderWindows(); renderMarkers(); schedule();
+    }).catch(function (e) { $("sim-status").textContent = "Could not load the model (" + e.message + ")."; });
+  }
+  $("sim-person").addEventListener("change", function () {
+    var old = person().age0; S.person = +this.value; var a0 = person().age0;
+    S.windows.forEach(function (w) { if (Math.abs(w.start - old) < 0.05 || w.start < a0) w.start = a0; if (w.stop !== null && w.stop <= w.start) w.stop = Math.min(90, w.start + 1); });
+    renderWindows(); schedule();
+  });
+  $("sim-add").addEventListener("click", function () { var a0 = person().age0, last = S.windows.length ? S.windows[S.windows.length - 1] : null;
+    var st = last ? Math.min(85, (last.stop === null ? Math.max(a0, 60) : last.stop + 5)) : a0; if (last && last.stop === null) last.stop = Math.min(st - 1, 89); S.windows.push({ start: Math.max(st, a0), stop: null }); renderWindows(); schedule(); });
+  Array.prototype.forEach.call(document.querySelectorAll(".sim-preset"), function (b) { b.addEventListener("click", function () { preset(b.dataset.p); }); });
+  $("sim-k").addEventListener("change", function () { S.K = +this.value; schedule(); });
+  $("sim-noise").addEventListener("change", function () { S.noise = this.checked; schedule(); });
+  $("sim-truth").addEventListener("change", function () { S.truth = this.checked; schedule(); });
+  $("sim-redraw").addEventListener("click", function () { S.seed = (S.seed * 48271) % 2147483647; schedule(); });
+  Array.prototype.forEach.call(document.querySelectorAll(".sim-plane"), function (b) { b.addEventListener("click", function () {
+    S.plane = b.dataset.pl; Array.prototype.forEach.call(document.querySelectorAll(".sim-plane"), function (x) { x.setAttribute("aria-pressed", x === b ? "true" : "false"); }); if (out) drawLand(); }); });
+  function redrawTheme() { colors(); if (out) { drawLand(); drawMarker(); drawSurv(); } }
+  try { window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redrawTheme); } catch (e) {}
+  try { new MutationObserver(redrawTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] }); } catch (e) {}
+  colors();
+  fetch("models/index.json").then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }).then(function (m) {
+    manifest = m; S.model = m[0].key; renderModels(); renderModelTable(); select();
+  }).catch(function (e) { $("sim-status").textContent = "Could not load the model list (" + e.message + ")."; });
+
+  // table of available models (section "The two models")
+  function renderModelTable() {
+    var el = $("models-table"); if (!el) return;
+    var HN = { inflammaging: "inflammaging", dispersion: "dispersion", irreversibility: "irreversibility", intervention: "intervention", jacobian_enrichment: "pathways", attractors: "frailty basin" };
+    var h = "<table><thead><tr><th>Model</th><th>Encoder</th><th class='n'>Cohort</th><th class='n'>Model A epochs (kept)</th><th class='n'>Forecast error</th><th class='n'>Trees</th><th class='n'>Survival C</th><th class='n'>Cox C</th><th class='n'>Drift error</th><th>Hallmarks found (hallmarks-ON)</th></tr></thead><tbody>";
+    manifest.forEach(function (m) { var s = m.summary, ta = m.train_args, hm = s.hallmarks || {};
+      var found = Object.keys(HN).filter(function (k) { return hm[k]; }).map(function (k) { return HN[k]; });
+      h += "<tr><td>" + m.label + "</td><td>" + (m.encoder === "hetgnn" ? "HetGNN" : "transformer") + "</td><td class='n'>" + m.n_people_cohort.toLocaleString() + "</td><td class='n'>" + ta.a_epochs + " (" + s.best_epoch + ")</td><td class='n'>" + fmt(s.forecast_mae, 3) + "</td><td class='n'>" + fmt(s.gbm_mae, 3) + "</td><td class='n'>" + fmt(s.c_index, 3) + "</td><td class='n'>" + fmt(s.cox_c_index, 3) + "</td><td class='n'>" + fmt(s.drift_rel_mse, 2) + "</td><td>" + found.length + "/6: " + found.join(", ") + "</td></tr>"; });
+    el.innerHTML = h + "</tbody></table>";
+  }
 })();
 </script>
