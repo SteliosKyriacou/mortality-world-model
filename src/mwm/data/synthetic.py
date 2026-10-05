@@ -146,6 +146,15 @@ class SynthConfig:
     gap_range: tuple = (1.0, 8.0)
     admin_followup: tuple = (12.0, 16.0)
     p_intervention: float = 0.3
+    # momentum ("pace of aging" as a persistent hidden velocity) on the age-core and nutrient axes.
+    # momentum=True: each person's pace v follows dv = -gamma_v (v - base) dt + sigma_v dW, with
+    #   stationary sd pace_sd, and dz_k = v_k dt replaces the constant tilt (persistence 1/gamma_v years).
+    # momentum_null=True: matched memoryless null - no velocity state; extra white noise on the same
+    #   axes with the same displacement variance over a 4-year gap.
+    momentum: bool = False
+    momentum_null: bool = False
+    gamma_v: float = 0.2
+    pace_sd: float = 0.04
 
     def on(self, h: str) -> bool:
         return bool(self.hallmarks.get(h, True))
@@ -158,7 +167,8 @@ class SynthConfig:
     def from_json(cls, d: dict) -> "SynthConfig":
         d = dict(d)
         for k in ("k_ou", "sigma_base", "baseline_age", "followup_probs", "gap_range", "admin_followup"):
-            d[k] = tuple(d[k])
+            if k in d:
+                d[k] = tuple(d[k])
         return cls(**d)
 
 
@@ -206,8 +216,23 @@ def infl_target(z0: np.ndarray, cfg: SynthConfig) -> np.ndarray:
     return cfg.c_lin * (z0 - cfg.z0_ref)
 
 
-def true_drift(z: np.ndarray, age: np.ndarray, u: np.ndarray, cfg: SynthConfig) -> np.ndarray:
-    """f(z, a, u) = -grad V + rotation + inflammation coupling + intervention forcing."""
+MOMENTUM_AXES = (0, 2)          # age core, nutrient
+
+
+def momentum_base(cfg: SynthConfig) -> np.ndarray:
+    return np.array([cfg.beta0, cfg.beta2])
+
+
+def momentum_null_sigma(cfg: SynthConfig, gap: float = 4.0) -> float:
+    """White-noise sd giving the same displacement variance over `gap` years as the OU pace."""
+    g, s = cfg.gamma_v, cfg.pace_sd
+    var = 2 * s ** 2 / g ** 2 * (g * gap - 1 + np.exp(-g * gap))
+    return float(np.sqrt(var / gap))
+
+
+def true_drift(z: np.ndarray, age: np.ndarray, u: np.ndarray, cfg: SynthConfig, v: np.ndarray | None = None) -> np.ndarray:
+    """f(z, a, u) = -grad V + rotation + inflammation coupling + intervention forcing.
+    With cfg.momentum, pass the hidden pace v (..., 2); without it the mean pace is used."""
     z = np.asarray(z, dtype=np.float64)
     u = np.broadcast_to(np.asarray(u, dtype=np.float64), z.shape[:-1])
     f = np.zeros_like(z)
@@ -221,6 +246,10 @@ def true_drift(z: np.ndarray, age: np.ndarray, u: np.ndarray, cfg: SynthConfig) 
     f[..., 2] = cfg.beta2 * (1.0 - kap * u)
     if not cfg.on("irreversibility"):  # nutrient axis also mean-reverts (no monotone direction left)
         f[..., 2] -= cfg.k_rev * z[..., 2]
+    if cfg.momentum and v is not None:
+        v = np.asarray(v, dtype=np.float64)
+        f[..., 0] = v[..., 0] if cfg.on("irreversibility") else f[..., 0] + (v[..., 0] - cfg.beta0)
+        f[..., 2] = f[..., 2] + (v[..., 1] - cfg.beta2) * (1.0 - kap * u)
     f[..., 3] = -cfg.k_rot * z[..., 3] - cfg.omega * z[..., 4]
     f[..., 4] = -cfg.k_rot * z[..., 4] + cfg.omega * z[..., 3]
     if cfg.on("frailty_basin"):
@@ -243,7 +272,12 @@ def true_diffusion(z: np.ndarray, age: np.ndarray, cfg: SynthConfig) -> np.ndarr
     """Diagonal sigma(z, a) (state independent here), shape like z."""
     z = np.asarray(z, dtype=np.float64)
     s = diffusion_scale(np.broadcast_to(age, z.shape[:-1]), cfg)
-    return s[..., None] * np.asarray(cfg.sigma_base)
+    out = s[..., None] * np.asarray(cfg.sigma_base)
+    if cfg.momentum_null:
+        extra = momentum_null_sigma(cfg)
+        for k in MOMENTUM_AXES:
+            out[..., k] = np.sqrt(out[..., k] ** 2 + extra ** 2)
+    return out
 
 
 def true_log_hazard(z: np.ndarray, cfg: SynthConfig) -> np.ndarray:
@@ -343,6 +377,10 @@ def simulate_cohort(cfg: SynthConfig, out_dir: str | Path | None = None, verbose
     alive = np.ones(n_over, bool)
     death_age = np.full(n_over, np.nan)
     z_at_visit = np.full(visit_ages.shape + (D_TRUE,), np.nan)
+    vbase = momentum_base(cfg)
+    vel = vbase + cfg.pace_sd * rng.normal(size=(n_over, 2)) if cfg.momentum else None
+    v_at_visit = np.full(visit_ages.shape + (2,), np.nan)
+    sig_v = cfg.pace_sd * np.sqrt(2 * cfg.gamma_v)
     end_age = censor_age.max() + cfg.dt
     n_steps = int(np.ceil((end_age - cfg.start_age) / cfg.dt))
     sq = np.sqrt(cfg.dt)
@@ -354,14 +392,18 @@ def simulate_cohort(cfg: SynthConfig, out_dir: str | Path | None = None, verbose
         if hit.any():
             ii, vv = np.nonzero(hit)
             z_at_visit[ii, vv] = z[ii]
+            if cfg.momentum:
+                v_at_visit[ii, vv] = vel[ii]
         u_eff = np.where(a >= base_age, u, 0.0)
-        f = true_drift(z, a, u_eff, cfg)
+        f = true_drift(z, a, u_eff, cfg, vel)
         g = true_diffusion(z, a, cfg)
         lam = np.exp(true_log_hazard(z, cfg))
         die = alive & (rng.uniform(size=n_over) < 1.0 - np.exp(-lam * cfg.dt)) & (a < censor_age)
         death_age[die] = a + rng.uniform(0, cfg.dt, die.sum())
         alive &= ~die
         z = z + f * cfg.dt + g * sq * rng.normal(size=z.shape)
+        if cfg.momentum:
+            vel = vel - cfg.gamma_v * (vel - vbase) * cfg.dt + sig_v * sq * rng.normal(size=vel.shape)
 
     # keep people alive at baseline; drop visits after death
     keep = ~(death_age <= base_age)
@@ -369,10 +411,12 @@ def simulate_cohort(cfg: SynthConfig, out_dir: str | Path | None = None, verbose
     if len(idx) < cfg.n_persons:
         raise RuntimeError("not enough survivors to baseline; increase oversampling")
     visit_ages, z_at_visit, u = visit_ages[idx], z_at_visit[idx], u[idx]
+    v_at_visit = v_at_visit[idx]
     death_age, censor_age, base_age = death_age[idx], censor_age[idx], base_age[idx]
     after_death = visit_ages >= np.where(np.isnan(death_age), np.inf, death_age)[:, None]
     visit_ages[after_death] = np.nan
     z_at_visit[after_death] = np.nan
+    v_at_visit[after_death] = np.nan
     event = (~np.isnan(death_age)).astype(np.int8)
     end = np.where(event == 1, death_age, censor_age)
 
@@ -420,6 +464,8 @@ def simulate_cohort(cfg: SynthConfig, out_dir: str | Path | None = None, verbose
         tr.insert(0, "visit_age", a_ok)
         tr.insert(0, "person_id", p_ok)
         tr["u"] = u[ok]
+        if cfg.momentum:
+            tr["vtrue_0"], tr["vtrue_1"] = v_at_visit[ok, v, 0], v_at_visit[ok, v, 1]
         tr["has_omics"] = om_visit
         truth_rows.append(tr)
     long = pd.concat(rows, ignore_index=True)
