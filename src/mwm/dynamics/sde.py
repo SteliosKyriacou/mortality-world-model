@@ -38,15 +38,41 @@ class NeuralSDE(LatentDynamics):
     stochastic = True
 
     def __init__(self, d, n_u=1, hidden=128, use_potential=True, diffusion_mode="state_age",
-                 solver="euler", n_steps=32, learn_obs_noise=True):
+                 solver="euler", n_steps=32, learn_obs_noise=True, use_age=True):
+        """use_age=False: autonomous dynamics. Neither the drift nor the noise sees age; the model
+        only knows the current state z (from the visit) and the elapsed time. Pass
+        diffusion_mode="state" with it."""
         super().__init__()
-        self.field = DriftField(d, n_u, hidden, use_potential)
+        if not use_age and diffusion_mode == "state_age":
+            diffusion_mode = "state"
+        self.field = DriftField(d, n_u, hidden, use_potential, use_age=use_age)
         self.diff = DiagDiffusion(d, 64, diffusion_mode)
         self.solver, self.n_steps = solver, n_steps
         self.log_r = nn.Parameter(torch.full((d,), -3.0)) if learn_obs_noise else None
         self.cfg = dict(d=d, n_u=n_u, hidden=hidden, use_potential=use_potential,
                         diffusion_mode=diffusion_mode, solver=solver, n_steps=n_steps,
-                        learn_obs_noise=learn_obs_noise)
+                        learn_obs_noise=learn_obs_noise, use_age=use_age)
+
+    @property
+    def uses_age(self) -> bool:
+        return self.field.use_age or self.diff.mode in ("state_age", "age")
+
+    def save_config(self, run_dir):
+        import json
+        from pathlib import Path
+        (Path(run_dir) / "model_A_config.json").write_text(json.dumps(self.cfg, indent=1))
+
+    @classmethod
+    def from_run_dir(cls, run_dir, d, device="cpu", **override):
+        """Rebuild the architecture saved by save_config (defaults = the original age-aware model)."""
+        import json
+        from pathlib import Path
+        f = Path(run_dir) / "model_A_config.json"
+        cfg = dict(d=d, hidden=128, solver="native", n_steps=32)
+        if f.exists():
+            cfg.update(json.loads(f.read_text()))
+        cfg.update(override)
+        return cls(**cfg).to(device)
 
     def drift(self, z, a, u):
         return self.field(z, a, u)

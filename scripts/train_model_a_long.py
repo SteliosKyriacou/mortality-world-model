@@ -46,6 +46,8 @@ ap.add_argument("--rate-penalty", type=float, default=0.0,
                 help="weight of the hinge penalty on directional rates beyond --rate-cap")
 ap.add_argument("--ke-penalty", type=float, default=0.0,
                 help="kinetic-energy penalty: weight on mean ||drift||^2 at observed states")
+ap.add_argument("--no-age", action="store_true",
+                help="autonomous dynamics: drift and noise get no age input (state + elapsed time only)")
 ap.add_argument("--sigma-penalty", type=float, default=1e-3,
                 help="weight on mean ||Sigma||^2 (makes 'explain it with noise' more expensive)")
 ap.add_argument("--encoder-from", default=None,
@@ -142,8 +144,10 @@ def checkpoint_metrics(m):
 
 
 # ---------------- Model A ----------------
-m = NeuralSDE(args.d, hidden=128, solver="native", n_steps=32).to(dev)
+m = NeuralSDE(args.d, hidden=128, solver="native", n_steps=32, use_age=not args.no_age).to(dev)
 m.set_obs_noise(obs_var)
+m.save_config(out)
+log(f"Model A config: {m.cfg}")
 tr, va = pairs_to_tensors(P["train"], dev), pairs_to_tensors(P["val"], dev)
 params = [p for p in m.parameters() if p.requires_grad]
 opt = torch.optim.AdamW(params, lr=args.lr, weight_decay=1e-5)

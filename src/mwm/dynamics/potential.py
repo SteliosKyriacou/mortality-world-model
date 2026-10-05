@@ -60,7 +60,8 @@ class DriftField(nn.Module):
 
 
 class DiagDiffusion(nn.Module):
-    """sigma(z, a) diagonal, positive. mode: 'state_age' | 'age' | 'constant'."""
+    """sigma(z, a) diagonal, positive. mode: 'state_age' | 'state' | 'age' | 'constant'.
+    'state' ignores age entirely (autonomous dynamics)."""
 
     def __init__(self, d: int, hidden: int = 64, mode: str = "state_age", init: float = 0.2):
         super().__init__()
@@ -69,7 +70,7 @@ class DiagDiffusion(nn.Module):
         if mode == "constant":
             self.p = nn.Parameter(torch.full((d,), float(inv)))
         else:
-            i = (d + 1) if mode == "state_age" else 1
+            i = {"state_age": d + 1, "state": d, "age": 1}[mode]
             self.net = mlp(i, d, hidden)
             nn.init.zeros_(self.net[-1].weight)
             nn.init.constant_(self.net[-1].bias, float(inv))
@@ -77,6 +78,8 @@ class DiagDiffusion(nn.Module):
     def forward(self, z, a):
         if self.mode == "constant":
             return nn.functional.softplus(self.p).expand(z.shape[0], -1) + 1e-4
+        if self.mode == "state":
+            return nn.functional.softplus(self.net(z)) + 1e-4
         x = age_norm(a).unsqueeze(-1)
         if self.mode == "state_age":
             x = torch.cat([z, x], -1)

@@ -47,7 +47,7 @@ bundle = EncoderBundle.load(run / "encoder.pt", map_location=dev).to(dev)
 lat = pd.read_parquet(run / "latents.parquet")
 zc = [c for c in lat.columns if c.startswith("z_")]
 d = len(zc)
-m = NeuralSDE(d, hidden=128, solver="native", n_steps=32).to(dev)
+m = NeuralSDE.from_run_dir(run, d, dev)
 m.set_obs_noise(emeta["latent_obs_noise_var"])
 m.load_state_dict(torch.load(run / "model_A.pt", map_location=dev, weights_only=True))
 m.eval()
@@ -82,7 +82,7 @@ weights = {
     "decoder": dec, "hazard": mlp_layers(bundle.hazard.net),
     "hazard_bias": float(bundle.hazard.bias.item()),
     "z_mean": rnd(bundle.z_mean.numpy()), "z_std": rnd(bundle.z_std.numpy()),
-    "show": SHOW,
+    "show": SHOW, "use_age": bool(m.field.use_age), "diffusion_mode": m.diff.mode,
     "std_mean": rnd([st.mean[st.features.index(f)] for f in SHOW]),
     "std_std": rnd([st.std[st.features.index(f)] for f in SHOW]),
     "std_log": [f in st.log_features for f in SHOW],

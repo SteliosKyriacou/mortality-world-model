@@ -3,7 +3,7 @@ const fs = require("fs"), path = require("path");
 const E = require("./sim_engine.js");
 const dir = path.join(__dirname, "models");
 let fail = 0;
-for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".json"))) {
+for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".json") && x !== "index.json")) {
   const J = JSON.parse(fs.readFileSync(path.join(dir, f)));
   const M = new E.Model(J), T = new E.Truth(J), t = J.tests, d = M.d;
   const worst = {};

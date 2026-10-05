@@ -57,7 +57,9 @@
     this.bJ = mk(this.J); this.bD = mk(this.D); this.bDec = mk(this.dec); this.bHaz = mk(this.haz);
     this.vh1 = new Float64Array(this.V[0].out); this.vh2 = new Float64Array(this.V[1].out);
     this.vg1 = new Float64Array(this.V[0].out); this.vg2 = new Float64Array(this.V[1].out);
-    this.inJ = new Float64Array(this.d + 2); this.inD = new Float64Array(this.d + 1);
+    this.useAge = w.use_age !== false;                       // autonomous models: no age input
+    this.diffAge = this.D[0].inp === this.d + 1;             // diffusion input [z, age] or [z]
+    this.inJ = new Float64Array(this.d + 2); this.inD = new Float64Array(this.diffAge ? this.d + 1 : this.d);
     this.zr = new Float64Array(this.d);
   }
   Model.prototype.gradV = function (z, g) { // ∇V(z) by hand-written backprop (SiLU MLP 16→128→128→1)
@@ -73,7 +75,7 @@
   Model.prototype.drift = function (z, a, u, out) {
     var d = this.d, x = this.inJ;
     for (var i = 0; i < d; i++) x[i] = z[i];
-    x[d] = (a - 60) / 10; x[d + 1] = u;
+    x[d] = this.useAge ? (a - 60) / 10 : 0; x[d + 1] = u;
     var j = mlp(this.J, silu, x, this.bJ);
     var g = this.gradV(z, out);
     for (i = 0; i < d; i++) out[i] = j[i] - g[i];
@@ -82,7 +84,7 @@
   Model.prototype.sigma = function (z, a, out) {
     var d = this.d, x = this.inD;
     for (var i = 0; i < d; i++) x[i] = z[i];
-    x[d] = (a - 60) / 10;
+    if (this.diffAge) x[d] = (a - 60) / 10;
     var s = mlp(this.D, silu, x, this.bD);
     for (i = 0; i < d; i++) out[i] = softplus(s[i]) + 1e-4;
     return out;

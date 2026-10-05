@@ -33,12 +33,18 @@ def test_dispersion(model, Z, A, U, device="cuda", n_perm=200, seed=0, ratio_thr
     slope = np.polyfit(A, lt, 1)[0] * 10  # per decade
     perm = np.array([np.polyfit(rng.permutation(A), np.log(_trace(model, Z, rng.permutation(A), device)), 1)[0] * 10
                      for _ in range(n_perm // 10)])
-    # age-only effect at fixed states
-    r_age = float(_trace(model, Z, np.full(len(Z), 80.0), device).mean() /
-                  _trace(model, Z, np.full(len(Z), 45.0), device).mean())
-    # bootstrap CI of the fixed-state ratio
-    t80, t45 = _trace(model, Z, np.full(len(Z), 80.0), device), _trace(model, Z, np.full(len(Z), 45.0), device)
-    boots = [t80[i].mean() / t45[i].mean() for i in (rng.integers(0, len(Z), len(Z)) for _ in range(200))]
+    if getattr(model, "uses_age", True):
+        # age-only effect at fixed states
+        t80, t45 = _trace(model, Z, np.full(len(Z), 80.0), device), _trace(model, Z, np.full(len(Z), 45.0), device)
+        how = "same states evaluated at age 80 vs 45"
+    else:
+        # autonomous model: noise can only depend on the state, so compare the states of older vs
+        # younger people (does the encoded state carry the age-dependence of the noise?)
+        t80, t45 = tr_own[(A >= 75) & (A < 85)], tr_own[(A >= 40) & (A < 50)]
+        how = "states of people aged 75-85 vs 40-50 (autonomous model)"
+    r_age = float(t80.mean() / t45.mean())
+    boots = [t80[rng.integers(0, len(t80), len(t80))].mean() / t45[rng.integers(0, len(t45), len(t45))].mean()
+             for _ in range(200)]
     ci = (float(np.quantile(boots, 0.025)), float(np.quantile(boots, 0.975)))
     # ensemble dispersion over 5 years
     ens = {}
@@ -52,7 +58,7 @@ def test_dispersion(model, Z, A, U, device="cuda", n_perm=200, seed=0, ratio_thr
         S = model.sample(z0, a0, a0 + 5.0, u, n_samples=n_samples, n_steps=int(5 * getattr(model, 'steps_per_year', 4))).cpu().numpy()
         ens[name] = float(S.var(0).sum(-1).mean())
     p_perm = float((np.abs(perm) >= abs(slope)).mean()) if slope > 0 else 1.0
-    return {"statistic": r_age, "ci95": ci, "log_trace_slope_per_decade": float(slope),
+    return {"statistic": r_age, "ci95": ci, "comparison": how, "log_trace_slope_per_decade": float(slope),
             "perm_slopes_sd": float(perm.std()), "p_perm": p_perm,
             "ensemble_var_5y": ens,
             "ensemble_ratio": ens["old"] / ens["young"] if ens.get("young") else float("nan"),

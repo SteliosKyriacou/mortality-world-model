@@ -54,7 +54,7 @@ def load_model_a(variant: str, cohort: str = "on", seed: int = 0, device: str = 
     bundle = EncoderBundle.load(d / "encoder.pt").to(device)
     lat = pd.read_parquet(d / "latents.parquet")
     dz = sum(c.startswith("z_") for c in lat.columns)
-    sde = NeuralSDE(dz, hidden=128, solver="native", n_steps=32).to(device)
+    sde = NeuralSDE.from_run_dir(d, dz, device)
     sde.set_obs_noise(json.loads((d / "encoder_meta.json").read_text())["latent_obs_noise_var"])
     sde.load_state_dict(torch.load(d / "model_A.pt", map_location=device, weights_only=True))
     sde.eval()

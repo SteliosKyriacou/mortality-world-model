@@ -45,7 +45,7 @@ lat = pd.read_parquet(run / "latents.parquet")
 zc = [c for c in lat.columns if c.startswith("z_")]
 d = len(zc)
 if args.model == "A":
-    m = NeuralSDE(d, hidden=128, solver="native", n_steps=32).to(dev)
+    m = NeuralSDE.from_run_dir(run, d, dev)
     m.set_obs_noise(json.loads((run / "encoder_meta.json").read_text())["latent_obs_noise_var"])
 else:
     from mwm.dynamics.flow import FlowModel
