@@ -161,6 +161,7 @@ ol.refs li:target { background: color-mix(in srgb, var(--model) 14%, transparent
   <ol class="toc">
     <li><a href="#simulator">Try it: simulate a person's future</a></li>
     <li><a href="#population">Population flow: the cohort as a fluid</a></li>
+    <li><a href="#fluid">Toward a Navier–Stokes of aging: momentum</a></li>
     <li><a href="#models">The two models and where they stand</a></li>
     <li><a href="#idea">The idea in one picture</a></li>
     <li><a href="#world">The synthetic worlds</a></li>
@@ -272,6 +273,48 @@ ol.refs li:target { background: color-mix(in srgb, var(--model) 14%, transparent
       <li><b>(d)</b> Median and 10–90% range of a marker among the living, with measurement noise added so all three are comparable with real visits: model (teal), true equation (dashed) and observed held-out visits within ±1 year of each age (red dots).</li>
     </ul>
     <p>Treatment scenarios other than "as it happened" are counterfactual. The real world's treatment was randomised and started at the first visit.</p></figcaption>
+</figure>
+
+<!-- ============================================================ fluid (A2) -->
+<section class="col" id="fluid">
+<h2>Toward a Navier–Stokes of aging: momentum</h2>
+<p>In Model A the speed and direction of aging are fixed by where you are: position determines velocity, as in the overdamped (Stokes) limit of fluid flow. Model A2 gives each person their own <b>aging velocity</b> <i>v</i>, a pace and direction that persists and relaxes through friction Γ:</p>
+<div class="eq"><math display="block"><mrow><mi>d</mi><mi mathvariant="bold-italic">z</mi><mo>=</mo><mi mathvariant="bold-italic">v</mi><mspace width="0.2em"/><mi>d</mi><mi>t</mi><mo>,</mo><mspace width="1.2em"/><mi>d</mi><mi mathvariant="bold-italic">v</mi><mo>=</mo><mo>[</mo><mi mathvariant="bold-italic">F</mi><mo>(</mo><mi mathvariant="bold-italic">z</mi><mo>,</mo><mi>u</mi><mo>)</mo><mo>−</mo><mi mathvariant="bold">Γ</mi><mo>(</mo><mi mathvariant="bold-italic">z</mi><mo>)</mo><mi mathvariant="bold-italic">v</mi><mo>]</mo><mspace width="0.2em"/><mi>d</mi><mi>t</mi><mo>+</mo><mi mathvariant="bold">Σ</mi><mo>(</mo><mi mathvariant="bold-italic">z</mi><mo>)</mo><mspace width="0.2em"/><mi>d</mi><mi mathvariant="bold-italic">W</mi></mrow></math></div>
+<p>The model is age-free, as in the autonomous variant: only the state, the elapsed time and the treatment enter. The starting velocity at a visit is inferred from the previous visit when there is one. With strong friction A2 reduces to Model A.</p>
+<p>At the population level, averaging the particles over velocity gives fluid equations for the cohort's density ρ and mean aging-velocity field <b>u</b>:</p>
+<div class="eq"><math display="block"><mrow><msub><mo>∂</mo><mi>t</mi></msub><mi>ρ</mi><mo>+</mo><mo>∇</mo><mo>·</mo><mo>(</mo><mi>ρ</mi><mi mathvariant="bold-italic">u</mi><mo>)</mo><mo>=</mo><mo>−</mo><mo>⟨</mo><mi>λ</mi><mo>⟩</mo><mi>ρ</mi><mo>,</mo><mspace width="1.2em"/><msub><mo>∂</mo><mi>t</mi></msub><mi mathvariant="bold-italic">u</mi><mo>+</mo><mo>(</mo><mi mathvariant="bold-italic">u</mi><mo>·</mo><mo>∇</mo><mo>)</mo><mi mathvariant="bold-italic">u</mi><mo>=</mo><mi mathvariant="bold-italic">F</mi><mo>−</mo><mi mathvariant="bold">Γ</mi><mi mathvariant="bold-italic">u</mi><mo>−</mo><mfrac><mrow><mo>∇</mo><mo>·</mo><mi mathvariant="bold">P</mi></mrow><mi>ρ</mi></mfrac><mo>+</mo><mtext>sink terms</mtext></mrow></math></div>
+<p>Here the "pressure" <b>P</b> is the spread of individual paces around the local mean: how differently people in the same state are aging. People do not collide, so it is not a physical pressure. It is the closure the model learns.</p>
+<p><b>Test world.</b> Each person has a hidden pace on the age-core and metabolic axes that persists for about 5 years, with 50,000 people seen every 2–5 years. A matched null world has the same spread of 4-year changes but no persistence. The question is whether A2 recovers the momentum, and whether it beats first-order Model A only where momentum exists.</p>
+<p id="fluid-results" class="empty">Results are being computed; this panel fills in when the momentum runs finish.</p>
+</section>
+<figure id="fluidfig">
+  <div class="fig-body">
+    <div class="controls" role="group" aria-label="World"><span class="lab">World</span>
+      <button type="button" class="seg fl-w" data-w="a2_momentum" aria-pressed="true">momentum world</button>
+      <button type="button" class="seg fl-w" data-w="a2_null" aria-pressed="false">null world (no persistence)</button></div>
+    <div class="controls" role="group" aria-label="Scenario"><span class="lab">Treatment</span>
+      <button type="button" class="seg fl-sc" data-s="actual" aria-pressed="true">as it happened</button>
+      <button type="button" class="seg fl-sc" data-s="none" aria-pressed="false">nobody</button>
+      <button type="button" class="seg fl-sc" data-s="all" aria-pressed="false">everyone</button>
+      <button type="button" class="seg fl-sc" data-s="from55" aria-pressed="false">from 55</button>
+      <button type="button" class="seg fl-sc" data-s="from65" aria-pressed="false">from 65</button></div>
+    <div class="controls"><label class="lab" for="fl-age">Age</label><input type="range" id="fl-age" min="0" max="25" value="0" style="width:min(260px,50vw)">
+      <span id="fl-age-lab" class="num"></span><button type="button" class="seg" id="fl-play">Play</button><span id="fl-status" class="lab"></span></div>
+    <div class="panels">
+      <div class="panel"><span class="pl">a</span><div class="ptitle">Density and mean aging velocity</div><div id="fl-dens" class="plot loading">Waiting for the momentum runs…</div></div>
+      <div class="panel"><span class="pl">b</span><div class="ptitle">Pace spread ("pressure")</div><div id="fl-pres" class="plot loading">Waiting…</div></div>
+      <div class="panel"><span class="pl">c</span><div class="ptitle">Cohort mean pace along the arrow of aging</div><div id="fl-pace" class="plot loading">Waiting…</div></div>
+      <div class="panel"><span class="pl">d</span><div class="ptitle">Fraction alive since entry</div><div id="fl-surv" class="plot loading">Waiting…</div></div>
+    </div>
+  </div>
+  <figcaption><b>Population fluid of Model A2</b> (held-out cohort entering at 40–50).
+    <ul>
+      <li><b>(a)</b> Density of the living cohort on the landscape plane (arrow of aging × the metabolic direction), with arrows for the mean aging-velocity field <b>u</b> in each cell.</li>
+      <li><b>(b)</b> Spread of individual paces around <b>u</b> (the square root of the velocity variance): the learned pressure closure.</li>
+      <li><b>(c)</b> The cohort's mean velocity along the arrow of aging.</li>
+      <li><b>(d)</b> Survival under Model A2 and under the true equation.</li>
+    </ul>
+    <p>Cells with fewer than about three particles' worth of mass show no velocity.</p></figcaption>
 </figure>
 
 <!-- ============================================================ models -->
@@ -1591,5 +1634,75 @@ node reports/model_a/webapp/test_engine.js</pre>
                fetch("models/" + KEY + ".json").then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })])
     .then(function (x) { P = x[0]; W = x[1]; wire(); draw(); })
     .catch(function (e) { ["pop-dens", "pop-flux", "pop-surv", "pop-mark"].forEach(function (id) { $(id).textContent = "Population data could not be loaded (" + e.message + ")."; }); });
+})();
+</script>
+
+<script>
+/* ---------------- Model A2 population fluid: density, mean velocity field, pace spread ---------------- */
+(function () {
+  "use strict";
+  var D = {}, S = { w: "a2_momentum", sc: "actual", i: 0 }, timer = null, C = {};
+  var $ = function (id) { return document.getElementById(id); };
+  function colors() { ["panel", "ink", "muted", "rule", "model", "truth", "null", "fail"].forEach(function (k) { C[k] = getComputedStyle(document.documentElement).getPropertyValue("--" + k).trim(); }); }
+  var CFG = { responsive: true, displaylogo: false, modeBarButtonsToRemove: ["toImage", "lasso2d", "select2d"] };
+  function ax(o) { return Object.assign({ gridcolor: C.rule, zerolinecolor: C.rule, linecolor: C.rule, tickcolor: C.rule }, o || {}); }
+  function base(o) { return Object.assign({ paper_bgcolor: C.panel, plot_bgcolor: C.panel, font: { family: "IBM Plex Sans, Arial, sans-serif", size: 12, color: C.ink }, margin: { l: 56, r: 12, t: 8, b: 70 }, legend: { orientation: "h", x: 0, y: -0.25, font: { size: 10 } } }, o || {}); }
+  function plot(id, data, layout) { var el = $(id); if (el.classList.contains("loading")) { el.classList.remove("loading"); el.textContent = ""; } Plotly.react(el, data, layout, CFG); }
+  function centers(e) { var c = []; for (var i = 0; i < e.length - 1; i++) c.push(0.5 * (e[i] + e[i + 1])); return c; }
+  function tr(M) { return M[0].map(function (_, j) { return M.map(function (r) { return r[j]; }); }); }
+  function cur() { return D[S.w]; }
+  function draw() {
+    var P = cur(); if (!P) return;
+    var sc = P.scenarios[S.sc], f = sc.fields[S.i], A = P.ages[S.i], cx = centers(P.edges[0]), cy = centers(P.edges[1]);
+    $("fl-age-lab").textContent = A.toFixed(0);
+    $("fl-status").textContent = "alive " + (100 * sc.alive_model[S.i] / sc.alive_model[0]).toFixed(1) + "% (truth " + (100 * sc.alive_truth[S.i] / sc.alive_truth[0]).toFixed(1) + "%)";
+    var dmax = 0; sc.fields.forEach(function (g) { g.density.forEach(function (r) { r.forEach(function (v) { if (v > dmax) dmax = v; }); }); });
+    // quiver: one segment per cell with enough mass; arrow length scaled to cell size
+    var sx = [], sy = [], tx = [], ty = [], mags = [], dx = cx[1] - cx[0], dy = cy[1] - cy[0];
+    f.ux.forEach(function (r, i) { r.forEach(function (u, j) { var v = f.uy[i][j]; if (u !== null && v !== null) mags.push(Math.hypot(u, v)); }); });
+    mags.sort(function (p, q) { return p - q; });
+    var med = mags.length ? mags[Math.floor(mags.length / 2)] : 1, cell = Math.min(dx, dy), scale = 0.6 * cell / Math.max(med, 1e-9);
+    f.ux.forEach(function (r, i) { r.forEach(function (u, j) { var v = f.uy[i][j]; if (u === null || v === null) return;
+      var L = Math.hypot(u, v) * scale, k = L > 1.2 * cell ? 1.2 * cell / L : 1;          // robust: median arrow = 0.6 cell, cap 1.2
+      var x0 = cx[i], y0 = cy[j], x1 = x0 + u * scale * k, y1 = y0 + v * scale * k; sx.push(x0, x1, null); sy.push(y0, y1, null); tx.push(x1); ty.push(y1); }); });
+    var pl = P.plane;
+    plot("fl-dens", [
+      { type: "heatmap", x: cx, y: cy, z: tr(f.density).map(function (r) { return r.map(function (v) { return v / 1e6; }); }), zmin: 0, zmax: dmax / 1e6,
+        colorscale: [[0, C.panel], [0.2, "#1f6f78"], [0.6, "#5aa77f"], [1, "#d9b84a"]], colorbar: { thickness: 9, len: 0.8, tickformat: ".1%", tickfont: { size: 9 }, title: { text: "share", font: { size: 10 } } }, hovertemplate: "%{z:.2%}<extra></extra>" },
+      { type: "contour", x: pl.x, y: pl.y, z: tr(pl.U), showscale: false, contours: { coloring: "none" }, line: { color: "rgba(255,255,255,0.35)", width: 1 }, ncontours: 16, hoverinfo: "skip" },
+      { type: "scatter", mode: "lines", x: sx, y: sy, line: { color: C.ink, width: 1.4 }, hoverinfo: "skip", showlegend: false },
+      { type: "scatter", mode: "markers", x: tx, y: ty, marker: { size: 5, color: C.ink, symbol: "circle" }, hoverinfo: "skip", showlegend: false }
+    ], base({ showlegend: false, margin: { l: 50, r: 8, t: 8, b: 44 }, xaxis: ax({ title: { text: "arrow of aging →" }, range: [P.edges[0][0], P.edges[0][P.edges[0].length - 1]] }), yaxis: ax({ title: { text: "metabolic direction" }, range: [P.edges[1][0], P.edges[1][P.edges[1].length - 1]] }) }));
+    var pmax = 0; sc.fields.forEach(function (g) { g.spread.forEach(function (r) { r.forEach(function (v) { if (v !== null && v > pmax) pmax = v; }); }); });
+    plot("fl-pres", [{ type: "heatmap", x: cx, y: cy, z: tr(f.spread), zmin: 0, zmax: pmax, colorscale: [[0, C.panel], [0.4, "#6a4fa3"], [1, "#e0663c"]],
+      colorbar: { thickness: 9, len: 0.8, tickfont: { size: 9 }, title: { text: "spread", font: { size: 10 } } }, hovertemplate: "pace spread %{z:.3f}/yr<extra></extra>" }],
+      base({ showlegend: false, margin: { l: 50, r: 8, t: 8, b: 44 }, xaxis: ax({ title: { text: "arrow of aging →" } }), yaxis: ax({ title: { text: "metabolic direction" } }) }));
+    var ages = P.ages, mv = function (k) { return P.scenarios[k].fields.map(function (g) { return g.mean_v[0]; }); };
+    plot("fl-pace", [
+      { type: "scatter", x: ages, y: mv("none"), mode: "lines", line: { color: C.null, width: 1.5 }, name: "nobody treated" },
+      { type: "scatter", x: ages, y: mv(S.sc), mode: "lines+markers", line: { color: C.model, width: 3 }, marker: { size: 4 }, name: "selected scenario" }
+    ], base({ xaxis: ax({ title: { text: "age" } }), yaxis: ax({ title: { text: "mean velocity along the arrow (per yr)" } }),
+      shapes: [{ type: "line", x0: A, x1: A, y0: 0, y1: 1, yref: "paper", line: { color: C.muted, width: 1, dash: "dot" } }] }));
+    var nm = function (v) { return v.map(function (x) { return x / v[0]; }); };
+    plot("fl-surv", [
+      { type: "scatter", x: ages, y: nm(sc.alive_model), mode: "lines", line: { color: C.model, width: 3 }, name: "Model A2" },
+      { type: "scatter", x: ages, y: nm(sc.alive_truth), mode: "lines", line: { color: C.truth, width: 2.5, dash: "dash" }, name: "true equation" }
+    ], base({ xaxis: ax({ title: { text: "age" } }), yaxis: ax({ title: { text: "fraction alive" }, tickformat: ".0%", range: [0, 1.02] }),
+      shapes: [{ type: "line", x0: A, x1: A, y0: 0, y1: 1, yref: "paper", line: { color: C.muted, width: 1, dash: "dot" } }] }));
+  }
+  function seg(sel, attr, val) { Array.prototype.forEach.call(document.querySelectorAll(sel), function (b) { b.setAttribute("aria-pressed", b.getAttribute(attr) === val ? "true" : "false"); }); }
+  function load(k) { if (D[k]) return Promise.resolve(D[k]); return fetch("fluid/" + k + ".json").then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }).then(function (j) { D[k] = j; return j; }); }
+  Array.prototype.forEach.call(document.querySelectorAll(".fl-w"), function (b) { b.addEventListener("click", function () { S.w = b.dataset.w; seg(".fl-w", "data-w", S.w); load(S.w).then(draw).catch(function () { $("fl-status").textContent = "This world's results are not available yet."; }); }); });
+  Array.prototype.forEach.call(document.querySelectorAll(".fl-sc"), function (b) { b.addEventListener("click", function () { S.sc = b.dataset.s; seg(".fl-sc", "data-s", S.sc); draw(); }); });
+  $("fl-age").addEventListener("input", function () { S.i = +this.value; draw(); });
+  $("fl-play").addEventListener("click", function () {
+    var btn = this; if (timer) { clearInterval(timer); timer = null; btn.textContent = "Play"; return; }
+    var P = cur(); if (!P) return; btn.textContent = "Pause"; if (S.i >= P.ages.length - 1) S.i = 0;
+    timer = setInterval(function () { S.i++; $("fl-age").value = S.i; draw(); if (S.i >= P.ages.length - 1) { clearInterval(timer); timer = null; btn.textContent = "Play"; } }, 450);
+  });
+  try { window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () { colors(); draw(); }); } catch (e) {}
+  colors();
+  load(S.w).then(function (P) { $("fl-age").max = String(P.ages.length - 1); draw(); })
+    .catch(function () { ["fl-dens", "fl-pres", "fl-pace", "fl-surv"].forEach(function (id) { $(id).textContent = "Waiting for the momentum runs to finish."; }); });
 })();
 </script>
