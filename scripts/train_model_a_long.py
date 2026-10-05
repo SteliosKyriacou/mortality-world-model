@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import torch
 
 from mwm.data.dataset import load_cohort_dir, make_pairs
@@ -39,6 +40,14 @@ ap.add_argument("--eval-every", type=int, default=50)
 ap.add_argument("--lr", type=float, default=2e-3)
 ap.add_argument("--jac-penalty", type=float, default=0.0,
                 help="Hutchinson ||d drift/dz||_F^2 penalty; stops stiff fast-reverting solutions")
+ap.add_argument("--rate-cap", type=float, default=0.0,
+                help="max relaxation/growth rate (1/yr) along random directions; 0 = off")
+ap.add_argument("--rate-penalty", type=float, default=0.0,
+                help="weight of the hinge penalty on directional rates beyond --rate-cap")
+ap.add_argument("--ke-penalty", type=float, default=0.0,
+                help="kinetic-energy penalty: weight on mean ||drift||^2 at observed states")
+ap.add_argument("--encoder-from", default=None,
+                help="reuse the frozen encoder + latents of an existing run directory")
 ap.add_argument("--select", default="val_mae", choices=["val_mae", "val_nll"],
                 help="which validation metric picks the kept checkpoint")
 ap.add_argument("--data-root", default="data/synthetic")
@@ -72,9 +81,21 @@ if args.encoder == "hetgnn":
     enc_kw = dict(hidden=64, n_layers=2, pathways=pw)
 else:
     enc_kw = dict(d_model=64, n_layers=2)
-bundle = train_encoder(ca, d_latent=args.d, kind=args.encoder, epochs=args.enc_epochs, seed=args.seed,
-                       device=dev, log=log, **enc_kw)
-lat = export_latents(bundle, ca, out, dev)
+if args.encoder_from:
+    import shutil
+    from mwm.encoders.train import EncoderBundle
+    src = Path(args.encoder_from)
+    for f in ("encoder.pt", "encoder_meta.json", "latents.parquet"):
+        shutil.copy(src / f, out / f)
+    bundle = EncoderBundle.load(out / "encoder.pt").to(dev)
+    bundle.history = json.loads((src / "convergence.json").read_text()).get("encoder_history", []) \
+        if (src / "convergence.json").exists() else []
+    lat = pd.read_parquet(out / "latents.parquet")
+    log(f"reusing frozen encoder from {src}")
+else:
+    bundle = train_encoder(ca, d_latent=args.d, kind=args.encoder, epochs=args.enc_epochs, seed=args.seed,
+                           device=dev, log=log, **enc_kw)
+    lat = export_latents(bundle, ca, out, dev)
 zc = [c for c in lat.columns if c.startswith("z_")]
 obs_var = json.loads((out / "encoder_meta.json").read_text())["latent_obs_noise_var"]
 
@@ -138,12 +159,23 @@ for ep in range(args.a_epochs):
         b = perm[s:s + 512]
         batch = tuple(x[b] for x in tr)
         loss, _ = m.loss(batch, K=32)
-        if args.jac_penalty > 0:
+        if args.jac_penalty > 0 or args.rate_penalty > 0 or args.ke_penalty > 0:
             zz = batch[0].clone().requires_grad_(True)
             f = m.drift(zz, batch[2], batch[4])
-            v = torch.randn_like(f)
-            vJ = torch.autograd.grad(f, zz, grad_outputs=v, create_graph=True)[0]
-            loss = loss + args.jac_penalty * (vJ ** 2).sum(-1).mean()
+            if args.ke_penalty > 0:
+                # kinetic energy: discourages large drift (fast motion) at observed states
+                loss = loss + args.ke_penalty * (f ** 2).sum(-1).mean()
+            if args.jac_penalty > 0 or args.rate_penalty > 0:
+                v = torch.randn_like(f)
+                vJ = torch.autograd.grad(f, zz, grad_outputs=v, create_graph=True)[0]   # v^T J
+                if args.jac_penalty > 0:
+                    loss = loss + args.jac_penalty * (vJ ** 2).sum(-1).mean()           # ||J||_F^2 (Hutchinson)
+                if args.rate_penalty > 0:
+                    # directional rate r = u^T J u along a random unit u: negative = pull-back, positive =
+                    # growth. Hinge: only rates faster than rate_cap (1/yr) in either direction are penalised.
+                    r = (vJ * v).sum(-1) / (v ** 2).sum(-1)
+                    over = torch.relu(r.abs() - args.rate_cap)
+                    loss = loss + args.rate_penalty * (over ** 2).mean()
         if not torch.isfinite(loss):
             n_skipped += 1
             continue
