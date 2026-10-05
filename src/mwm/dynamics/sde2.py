@@ -1,7 +1,11 @@
 """Model A2: second-order ("momentum") latent SDE, age-free.
 
-    dz = v dt
-    dv = [F(z, u) − Γ(z) ⊙ v] dt + Σ(z) dW,       F = −∇V(z) + J(z, u)
+    dz = v dt + Σ_z(z) dW₁                         (position noise: fast fluctuations; optional)
+    dv = [F(z, u) − Γ(z) ⊙ v] dt + Σ_v(z) dW₂,     F = −∇V(z) + J(z, u)
+
+Without position noise all randomness must pass through v, so one friction Γ has to serve both fast
+fluctuations and a slow, persistent pace, and the learned persistence collapses to months. With
+position noise (pos_noise=True, the default) Γ is free to be small.
 
 Each person carries an aging velocity v (their current pace and direction of aging) that persists and
 relaxes at rate Γ(z) (friction). With strong friction the model reduces to the first-order Model A with
@@ -33,7 +37,7 @@ from .potential import DiagDiffusion, DriftField, mlp
 class SecondOrderSDE(LatentDynamics):
     stochastic = True
 
-    def __init__(self, d, n_u=1, hidden=128, use_potential=True, n_steps=32, friction_init=0.3):
+    def __init__(self, d, n_u=1, hidden=128, use_potential=True, n_steps=32, friction_init=0.3, pos_noise=True):
         super().__init__()
         self.d, self.n_steps = d, n_steps
         self.force = DriftField(d, n_u, hidden, use_potential, use_age=False)
@@ -41,11 +45,13 @@ class SecondOrderSDE(LatentDynamics):
         nn.init.zeros_(self.fric[-1].weight)
         nn.init.constant_(self.fric[-1].bias, float(torch.log(torch.expm1(torch.tensor(friction_init)))))
         self.noise = DiagDiffusion(d, 64, "state", init=0.05)
+        self.pos_noise = pos_noise
+        self.znoise = DiagDiffusion(d, 64, "state", init=0.1) if pos_noise else None
         self.vprior = mlp(d, 2 * d, hidden)            # mean, log-sd of v given z
         self.vpost = mlp(2 * d + 1, 2 * d, hidden)     # mean, log-sd of v given (z_prev, z_now, Δt)
         self.log_r = nn.Parameter(torch.full((d,), -3.0))
         self.cfg = dict(d=d, n_u=n_u, hidden=hidden, use_potential=use_potential, n_steps=n_steps,
-                        friction_init=friction_init)
+                        friction_init=friction_init, pos_noise=pos_noise)
 
     # ---------------- components ----------------
     def friction(self, z):
@@ -72,18 +78,24 @@ class SecondOrderSDE(LatentDynamics):
         return self.F(z, u) / self.friction(z)
 
     def diffusion(self, z, a):
-        return self.noise(z, a) / self.friction(z)
+        # overdamped-limit noise in z: velocity noise passed through friction, plus position noise
+        s = self.noise(z, a) / self.friction(z)
+        if self.pos_noise:
+            s = torch.sqrt(s ** 2 + self.znoise(z, a) ** 2)
+        return s
 
     @property
     def uses_age(self):
         return False
 
     # ---------------- simulation ----------------
-    def _step(self, z, v, u, h, eps):
+    def _step(self, z, v, u, h, eps, eps_z=None):
         f = self.F(z, u)
         g = self.friction(z)
         s = self.noise(z, None)
         z_new = z + v * h
+        if self.pos_noise:
+            z_new = z_new + self.znoise(z, None) * torch.sqrt(h) * (eps_z if eps_z is not None else torch.randn_like(z))
         v_new = v + (f - g * v) * h + s * torch.sqrt(h) * eps
         return z_new, v_new
 
@@ -117,6 +129,8 @@ class SecondOrderSDE(LatentDynamics):
             loss = loss + j_penalty * (j ** 2).sum(-1).mean()
         if sigma_penalty > 0:
             loss = loss + sigma_penalty * (self.noise(z0, None) ** 2).sum(-1).mean()
+            if self.pos_noise:
+                loss = loss + sigma_penalty * (self.znoise(z0, None) ** 2).sum(-1).mean()
         return loss, {"nll": nll.item()}
 
     @torch.no_grad()

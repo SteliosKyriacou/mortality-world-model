@@ -208,6 +208,15 @@ if "vtrue_0" in tli.columns:
     res["momentum"]["corr_inferred_pace_true_pace"] = float(np.corrcoef(pace_inferred[ok], vt[ok])[0, 1])
     res["momentum"]["corr_fd_rate_true_pace"] = float(np.corrcoef(rate1[ok], vt[ok])[0, 1])
     res["momentum"]["true_persistence_years"] = 1.0 / tcfg.gamma_v
+if args.oracle:   # true coordinates: read pace and persistence directly on the true axes
+    res["momentum"]["persistence_years_true_axis0"] = float(1.0 / G[:, 0].mean())
+    res["momentum"]["persistence_years_true_axis2"] = float(1.0 / G[:, 2].mean())
+    if "vtrue_0" in tli.columns:
+        vt0 = tli["vtrue_0"].to_numpy()
+        ok0 = np.isfinite(vt0)
+        res["momentum"]["corr_inferred_v_axis0_true_pace"] = float(np.corrcoef(mu.cpu().numpy()[ok0, 0], vt0[ok0])[0, 1])
+        fd0 = (Z[i2, 0] - Z[i1, 0]) / (A[i2] - A[i1])
+        res["momentum"]["corr_fd_axis0_true_pace"] = float(np.corrcoef(fd0[ok0], vt0[ok0])[0, 1])
 log("momentum: " + json.dumps({k: (round(v, 3) if isinstance(v, float) else v) for k, v in res["momentum"].items()
                                if not isinstance(v, dict)}))
 
