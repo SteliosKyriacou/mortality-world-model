@@ -14,10 +14,11 @@ from mwm.data.synthetic import SynthConfig, simulate_cohort
 ap = argparse.ArgumentParser()
 ap.add_argument("--out", default="data/synthetic_momentum_annual")
 ap.add_argument("--n-persons", type=int, default=50_000)
+ap.add_argument("--wearable-frac", type=float, default=0.0, help="share of people with a wearable stream")
 args = ap.parse_args()
 fu = np.zeros(11)
 fu[5:] = 1 / 6                                   # 5..10 follow-ups, equally likely
-base = dict(n_persons=args.n_persons, seed=0, followup_probs=tuple(float(x) for x in fu), gap_range=(0.9, 1.1),
+base = dict(n_persons=args.n_persons, seed=0, followup_probs=tuple(float(x) for x in fu), gap_range=(0.9, 1.1), wearable_frac=args.wearable_frac,
             miss_growth=0.03, omics_fraction=0.10, omics_repeat=0.3)
 for name, kw in (("momentum", {"momentum": True}), ("null", {"momentum_null": True})):
     simulate_cohort(SynthConfig(**base, **kw), Path(args.out) / name)

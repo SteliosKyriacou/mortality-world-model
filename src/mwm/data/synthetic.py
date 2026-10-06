@@ -147,6 +147,10 @@ class SynthConfig:
     gap_range: tuple = (1.0, 8.0)
     admin_followup: tuple = (12.0, 16.0)
     p_intervention: float = 0.3
+    # wearable stream (daily device data averaged over each simulation step, ~18 days). Generated with
+    # its own random stream, so labs, truth and outcomes are identical with or without it.
+    wearable_frac: float = 0.0
+    wearable_years: tuple = (3.0, 6.0)
     # momentum ("pace of aging" as a persistent hidden velocity) on the age-core and nutrient axes.
     # momentum=True: each person's pace v follows dv = -gamma_v (v - base) dt + sigma_v dW, with
     #   stationary sd pace_sd, and dz_k = v_k dt replaces the constant tilt (persistence 1/gamma_v years).
@@ -167,7 +171,8 @@ class SynthConfig:
     @classmethod
     def from_json(cls, d: dict) -> "SynthConfig":
         d = dict(d)
-        for k in ("k_ou", "sigma_base", "baseline_age", "followup_probs", "gap_range", "admin_followup"):
+        for k in ("k_ou", "sigma_base", "baseline_age", "followup_probs", "gap_range", "admin_followup",
+                  "wearable_years"):
             if k in d:
                 d[k] = tuple(d[k])
         return cls(**d)
@@ -376,6 +381,11 @@ def simulate_cohort(cfg: SynthConfig, out_dir: str | Path | None = None, verbose
     z[:, 6:8] = rng.normal(0.0, 0.5, (n_over, 2))
 
     alive = np.ones(n_over, bool)
+    if cfg.wearable_frac > 0:
+        rngw = np.random.default_rng(cfg.seed + 7919)
+        wear = rngw.uniform(size=n_over) < cfg.wearable_frac
+        wear_end = base_age + rngw.uniform(*cfg.wearable_years, n_over)
+        wrec_i, wrec_a, wrec_z = [], [], []
     death_age = np.full(n_over, np.nan)
     z_at_visit = np.full(visit_ages.shape + (D_TRUE,), np.nan)
     vbase = momentum_base(cfg)
@@ -402,6 +412,11 @@ def simulate_cohort(cfg: SynthConfig, out_dir: str | Path | None = None, verbose
         die = alive & (rng.uniform(size=n_over) < 1.0 - np.exp(-lam * cfg.dt)) & (a < censor_age)
         death_age[die] = a + rng.uniform(0, cfg.dt, die.sum())
         alive &= ~die
+        if cfg.wearable_frac > 0:
+            on = wear & alive & (a >= base_age) & (a < wear_end)
+            if on.any():
+                ii = np.nonzero(on)[0]
+                wrec_i.append(ii); wrec_a.append(np.full(len(ii), a)); wrec_z.append(z[ii].copy())
         z = z + f * cfg.dt + g * sq * rng.normal(size=z.shape)
         if cfg.momentum:
             vel = vel - cfg.gamma_v * (vel - vbase) * cfg.dt + sig_v * sq * rng.normal(size=vel.shape)
@@ -504,7 +519,58 @@ def simulate_cohort(cfg: SynthConfig, out_dir: str | Path | None = None, verbose
         (out / "truth" / "meta.json").write_text(json.dumps(meta, indent=1))
         splits = make_splits(outcomes, seed=20261003)
         save_splits(splits, "synth", root=out)
+    if cfg.wearable_frac > 0:
+        wdf = wearable_observations(cfg, np.concatenate(wrec_i), np.concatenate(wrec_a), np.concatenate(wrec_z),
+                                    idx, pid, death_age, rngw)
+        if out_dir is not None:
+            wdf.to_parquet(Path(out_dir) / "wearable.parquet", index=False)
+        if verbose:
+            print(f"[synth] wearable: {wdf.person_id.nunique()} people, {len(wdf)} periods "
+                  f"({wdf.groupby('person_id').size().median():.0f} per person)")
     return long, outcomes, truth
+
+
+# wearable features: loadings on the standardised true latent (age core 0, infl 1, nutr 2, rot 3/4, frail 5, ou 6/7),
+# physical mean and sd (std-unit -> unit), log-scale flag
+WEARABLE = {
+    "resting_hr": ({4: 0.6, 0: 0.3, 5: 0.3}, 62.0, 8.0, False, "bpm"),
+    "steps": ({5: -0.6, 0: -0.4, 2: -0.2}, 8.8, 0.35, True, "steps/day"),
+    "sleep_eff": ({1: -0.4, 0: -0.3, 7: 0.2}, 85.0, 5.0, False, "%"),
+    "fitness": ({0: -0.7, 5: -0.4, 2: -0.2}, 35.0, 7.0, False, "ml/kg/min"),
+}
+
+
+def wearable_observations(cfg, rec_i, rec_a, rec_z, keep_idx, pid, death_age, rng,
+                          day_sd=0.8, period_days=18, wear_prob=0.8, ar_phi=0.85, ar_sd=0.25, season_amp=0.15):
+    """Period (~18-day) averages of daily wearable data from the true latent path.
+
+    signal (loadings on the standardised latent) + seasonal cycle + person-level behavioural AR(1)
+    drift (persists for weeks) + daily noise averaged over the days actually worn; periods with < 4 worn
+    days are missing."""
+    pos = -np.ones(rec_i.max() + 1, int)
+    pos[keep_idx] = np.arange(len(keep_idx))
+    m = pos[rec_i] >= 0
+    rec_i, rec_a, rec_z = pos[rec_i[m]], rec_a[m], rec_z[m]
+    da = death_age[rec_i]
+    m = ~(rec_a >= np.where(np.isnan(da), np.inf, da))
+    rec_i, rec_a, rec_z = rec_i[m], rec_a[m], rec_z[m]
+    o = np.lexsort((rec_a, rec_i))
+    rec_i, rec_a, rec_z = rec_i[o], rec_a[o], rec_z[o]
+    zt = (rec_z - LATENT_REF_MEAN) / LATENT_REF_SCALE
+    days = rng.binomial(period_days, wear_prob, len(rec_i))
+    out = {"person_id": pid[rec_i], "age": rec_a.round(4), "days_worn": days}
+    first = np.r_[True, rec_i[1:] != rec_i[:-1]]
+    for k, (ld, mu, sd, is_log, unit) in WEARABLE.items():
+        sig = sum(w * zt[:, j] for j, w in ld.items())
+        season = season_amp * np.sin(2 * np.pi * rec_a + rng.uniform(0, 2 * np.pi))
+        eps = rng.normal(0, ar_sd * np.sqrt(1 - ar_phi ** 2), len(rec_i))
+        ar = np.empty(len(rec_i))
+        for t in range(len(rec_i)):          # person-level AR(1), restarted at each person's first period
+            ar[t] = rng.normal(0, ar_sd) if first[t] else ar_phi * ar[t - 1] + eps[t]
+        x = sig + season + ar + rng.normal(0, 1, len(rec_i)) * day_sd / np.sqrt(np.maximum(days, 1))
+        val = np.exp(mu + sd * x) if is_log else mu + sd * x
+        out[k] = np.where(days >= 4, val, np.nan)
+    return pd.DataFrame(out)
 
 
 def load_truth(out_dir: str | Path):

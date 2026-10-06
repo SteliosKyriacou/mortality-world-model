@@ -181,26 +181,34 @@ class SeqSecondOrderSDE(SecondOrderSDE):
     """
 
     def __init__(self, d, n_u=1, hidden=128, use_potential=True, n_steps=8, friction_init=0.3, pos_noise=True,
-                 filter_hidden=64):
+                 filter_hidden=64, w_dim=0, horizons=1):
+        """w_dim: extra per-visit filter inputs (e.g. wearable summaries for the interval before the visit).
+        horizons: train on predictions 1..horizons visits ahead along continued simulated paths, so that
+        persistence must be carried by the dynamics, not only by the filter."""
         super().__init__(d, n_u, hidden, use_potential, n_steps, friction_init, pos_noise)
-        self.filt = nn.GRUCell(2 * d + 2, filter_hidden)
+        self.w_dim, self.horizons = w_dim, horizons
+        self.filt = nn.GRUCell(2 * d + 2 + w_dim, filter_hidden)
         self.vhead = mlp(filter_hidden + d, 2 * d, hidden)
         self.filter_hidden = filter_hidden
-        self.cfg.update(filter_hidden=filter_hidden)
+        self.cfg.update(filter_hidden=filter_hidden, w_dim=w_dim, horizons=horizons)
 
-    def filter_step(self, h, z, z_prev, dt_prev, has_prev):
-        """Update the filter with a new visit. has_prev = False at a person's first visit."""
+    def filter_step(self, h, z, z_prev, dt_prev, has_prev, w=None):
+        """Update the filter with a new visit. has_prev = False at a person's first visit.
+        w: (B, w_dim) extra inputs for the interval before this visit (zeros when absent)."""
         hp = has_prev.float().unsqueeze(-1)
         fd = (z - z_prev) / dt_prev.clamp_min(0.25).unsqueeze(-1) * hp
         x = torch.cat([z, fd, torch.log(dt_prev.clamp_min(0.25)).unsqueeze(-1) * hp, hp], -1)
+        if self.w_dim:
+            x = torch.cat([x, w if w is not None else torch.zeros(len(z), self.w_dim, device=z.device)], -1)
         return self.filt(x, h)
 
     def v_from_filter(self, h, z):
         m, ls = self.vhead(torch.cat([h, z], -1)).chunk(2, -1)
         return m, ls.clamp(-6, 2).exp()
 
-    def seq_loss(self, Zs, As, Us, L, K=16, j_penalty=1e-3, sigma_penalty=1e-3):
-        """Zs (B, T, d), As (B, T), Us (B, T, n_u), L (B,) number of visits. Mean NLL over transitions."""
+    def seq_loss(self, Zs, As, Us, L, K=16, j_penalty=1e-3, sigma_penalty=1e-3, Ws=None):
+        """Zs (B, T, d), As (B, T), Us (B, T, n_u), L (B,) number of visits, Ws (B, T, w_dim) optional.
+        Mean NLL over all (visit, horizon) predictions."""
         B, Tn, d = Zs.shape
         h = torch.zeros(B, self.filter_hidden, device=Zs.device)
         tot, cnt = 0.0, 0.0
@@ -208,24 +216,32 @@ class SeqSecondOrderSDE(SecondOrderSDE):
             has_prev = torch.full((B,), k > 0, dtype=torch.bool, device=Zs.device)
             zp = Zs[:, k - 1] if k > 0 else Zs[:, 0]
             dtp = (As[:, k] - As[:, k - 1]) if k > 0 else torch.ones(B, device=Zs.device)
-            h = self.filter_step(h, Zs[:, k], zp, dtp, has_prev)
+            h = self.filter_step(h, Zs[:, k], zp, dtp, has_prev, Ws[:, k] if Ws is not None else None)
             valid = (k + 1) < L
             if not valid.any():
                 break
             idx = valid.nonzero(as_tuple=True)[0]
-            z0, z1, u = Zs[idx, k], Zs[idx, k + 1], Us[idx, k]
-            dt = As[idx, k + 1] - As[idx, k]
+            z0, u = Zs[idx, k], Us[idx, k]
             mu, sd = self.v_from_filter(h[idx], z0)
             n = len(idx)
             rep = lambda x: x.unsqueeze(0).expand(K, *x.shape).reshape(K * n, *x.shape[1:])
             zs = rep(z0)
             if self.training and getattr(self, "obs_r2_fixed", None) is not None:
                 zs = zs + torch.randn_like(zs) * self.obs_r2_fixed.sqrt()
-            v0 = rep(mu) + rep(sd) * torch.randn(K * n, d, device=Zs.device)
-            zT, _ = self.simulate2(zs, v0, rep(dt), rep(u))
-            nll = gaussian_sample_nll(zT.view(K, n, d), z1, self.obs_var)
-            tot = tot + nll * n
-            cnt += n
+            v = rep(mu) + rep(sd) * torch.randn(K * n, d, device=Zs.device)
+            a_prev = As[idx, k]
+            for j in range(1, self.horizons + 1):          # continue the same simulated paths
+                if k + j >= Tn:
+                    break
+                ok = (k + j) < L[idx]
+                if not ok.any():
+                    break
+                dt = (As[idx, k + j] - a_prev).clamp_min(1e-3)
+                zs, v = self.simulate2(zs, v, rep(dt), rep(u))
+                nll_each = self._nll_per(zs.view(K, n, d), Zs[idx, k + j])
+                tot = tot + (nll_each * ok).sum()
+                cnt += float(ok.sum())
+                a_prev = As[idx, k + j]
         loss = tot / max(cnt, 1)
         zf = Zs[:, 0]
         if j_penalty > 0:
@@ -237,8 +253,13 @@ class SeqSecondOrderSDE(SecondOrderSDE):
                 loss = loss + sigma_penalty * (self.znoise(zf, None) ** 2).sum(-1).mean()
         return loss, float(loss.detach()) if not torch.is_tensor(tot) else float((tot / max(cnt, 1)).detach())
 
+    def _nll_per(self, S, y):
+        mu = S.mean(0)
+        var = S.var(0) + self.obs_var + 1e-5
+        return (0.5 * (y - mu) ** 2 / var + 0.5 * torch.log(var)).sum(-1)
+
     @torch.no_grad()
-    def filter_history(self, Zs, As, upto):
+    def filter_history(self, Zs, As, upto, Ws=None):
         """Run the filter over visits 0..upto (inclusive) for every sequence; returns h, z at `upto`."""
         B = Zs.shape[0]
         h = torch.zeros(B, self.filter_hidden, device=Zs.device)
@@ -246,13 +267,13 @@ class SeqSecondOrderSDE(SecondOrderSDE):
             has_prev = torch.full((B,), k > 0, dtype=torch.bool, device=Zs.device)
             zp = Zs[:, k - 1] if k > 0 else Zs[:, 0]
             dtp = (As[:, k] - As[:, k - 1]) if k > 0 else torch.ones(B, device=Zs.device)
-            h = self.filter_step(h, Zs[:, k], zp, dtp, has_prev)
+            h = self.filter_step(h, Zs[:, k], zp, dtp, has_prev, Ws[:, k] if Ws is not None else None)
         return h
 
     @torch.no_grad()
-    def forecast_from_history(self, Zs, As, Us, k, a_target, n_samples=64):
+    def forecast_from_history(self, Zs, As, Us, k, a_target, n_samples=64, Ws=None):
         """Samples of z at age a_target (B,) for people observed at visits 0..k. Returns (K, B, d)."""
-        h = self.filter_history(Zs, As, k)
+        h = self.filter_history(Zs, As, k, Ws)
         z0 = Zs[:, k]
         mu, sd = self.v_from_filter(h, z0)
         B, d = z0.shape
