@@ -140,6 +140,7 @@ class SynthConfig:
     gene_noise: float = 0.5
     omics_fraction: float = 0.25
     omics_repeat: float = 0.5
+    miss_growth: float = 0.3          # relative increase of per-marker missingness at each later visit
     # visits
     baseline_age: tuple = (40.0, 70.0)
     followup_probs: tuple = (0.55, 0.25, 0.12, 0.08)
@@ -442,7 +443,7 @@ def simulate_cohort(cfg: SynthConfig, out_dir: str | Path | None = None, verbose
         xs = decode_clinical_std(zz, Wc, quad) + rng.normal(0, cfg.feat_noise, (ok.sum(), len(feats)))
         raw = std_to_raw(xs, feats)
         # per-visit dropout of whole optional panels + per-feature missingness
-        miss_p = base_miss[None, :] * (1.0 + 0.3 * v)
+        miss_p = base_miss[None, :] * (1.0 + cfg.miss_growth * v)
         m = rng.uniform(size=raw.shape) >= np.clip(miss_p, 0, 0.95)
         zt = (zz - LATENT_REF_MEAN) / LATENT_REF_SCALE
         xg = zt @ Wg.T + rng.normal(0, cfg.gene_noise, (ok.sum(), Wg.shape[0]))
