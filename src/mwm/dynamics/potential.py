@@ -84,3 +84,34 @@ class DiagDiffusion(nn.Module):
         if self.mode == "state_age":
             x = torch.cat([z, x], -1)
         return nn.functional.softplus(self.net(x)) + 1e-4
+
+
+class SurfaceField(nn.Module):
+    """Pure gradient flow on a learned surface: drift = −∇_z V(z, u), with V(z, u) = V₀(z) + u·V₁(z).
+
+    With a 2-dimensional latent this is literally a 3D landscape (x, y, height): the condition moves
+    downhill, an intervention u reshapes the terrain, and nothing else (no rotation, no age input)
+    contributes to the drift. Same interface as DriftField (nonconservative() is identically zero)."""
+
+    def __init__(self, d: int, n_u: int = 1, hidden: int = 128):
+        super().__init__()
+        self.d, self.n_u, self.use_potential, self.use_age = d, n_u, True, False
+        self.V0 = mlp(d, 1, hidden)
+        self.V1 = mlp(d, n_u, hidden)        # one terrain change per intervention
+
+    def potential(self, z, u=None):
+        V = self.V0(z).squeeze(-1)
+        if u is not None:
+            V = V + (self.V1(z) * u).sum(-1)
+        return V
+
+    def forward(self, z, a, u):
+        create = torch.is_grad_enabled() and self.training
+        with torch.enable_grad():
+            zz = z if z.requires_grad else z.detach().requires_grad_(True)
+            V = self.potential(zz, u).sum()
+            g = torch.autograd.grad(V, zz, create_graph=create or z.requires_grad)[0]
+        return -g
+
+    def nonconservative(self, z, a, u):
+        return torch.zeros_like(z)

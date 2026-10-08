@@ -14,7 +14,7 @@ import torch.nn as nn
 import torchsde
 
 from .base import LatentDynamics, gaussian_sample_nll
-from .potential import DiagDiffusion, DriftField
+from .potential import DiagDiffusion, DriftField, SurfaceField
 
 
 class _ScaledSDE(nn.Module):
@@ -38,20 +38,26 @@ class NeuralSDE(LatentDynamics):
     stochastic = True
 
     def __init__(self, d, n_u=1, hidden=128, use_potential=True, diffusion_mode="state_age",
-                 solver="euler", n_steps=32, learn_obs_noise=True, use_age=True):
+                 solver="euler", n_steps=32, learn_obs_noise=True, use_age=True, field_kind="free"):
         """use_age=False: autonomous dynamics. Neither the drift nor the noise sees age; the model
         only knows the current state z (from the visit) and the elapsed time. Pass
         diffusion_mode="state" with it."""
         super().__init__()
         if not use_age and diffusion_mode == "state_age":
             diffusion_mode = "state"
-        self.field = DriftField(d, n_u, hidden, use_potential, use_age=use_age)
+        if field_kind == "surface":    # pure gradient flow on a learned surface V(z, u); always age-free
+            use_age = False
+            if diffusion_mode == "state_age":
+                diffusion_mode = "state"
+            self.field = SurfaceField(d, n_u, hidden)
+        else:
+            self.field = DriftField(d, n_u, hidden, use_potential, use_age=use_age)
         self.diff = DiagDiffusion(d, 64, diffusion_mode)
         self.solver, self.n_steps = solver, n_steps
         self.log_r = nn.Parameter(torch.full((d,), -3.0)) if learn_obs_noise else None
         self.cfg = dict(d=d, n_u=n_u, hidden=hidden, use_potential=use_potential,
                         diffusion_mode=diffusion_mode, solver=solver, n_steps=n_steps,
-                        learn_obs_noise=learn_obs_noise, use_age=use_age)
+                        learn_obs_noise=learn_obs_noise, use_age=use_age, field_kind=field_kind)
 
     @property
     def uses_age(self) -> bool:
