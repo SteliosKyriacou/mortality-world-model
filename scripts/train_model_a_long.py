@@ -33,7 +33,7 @@ from mwm.pipeline import (Logger, baseline_eval, forecast_eval, jsonable, predic
 ap = argparse.ArgumentParser()
 ap.add_argument("--cohort", default="on")
 ap.add_argument("--seed", type=int, default=0)
-ap.add_argument("--d", type=int, default=16)
+ap.add_argument("--latent-dim", "--d", dest="d", type=int, default=16)
 ap.add_argument("--enc-epochs", type=int, default=200)
 ap.add_argument("--a-epochs", type=int, default=600)
 ap.add_argument("--eval-every", type=int, default=50)
